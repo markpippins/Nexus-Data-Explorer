@@ -1,0 +1,6 @@
+{
+  "name": "Data Workbench",
+  "description": "Browser-based relational database management IDE with SQL query editor, schema treeview, automated query formatter, ERD visualization, and real-time data export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
