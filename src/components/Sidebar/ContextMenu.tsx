@@ -25,6 +25,7 @@ interface ContextMenuProps {
   onViewDataGrid: (schemaName: string, tableName: string) => void;
   onDropObject: (type: string, schemaName: string, objectName: string) => void;
   onViewProperties: (schemaName: string, objectName: string, objectData: any) => void;
+  onOpenEavStudio?: (schemaName: string) => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -218,6 +219,21 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           >
             <Code className="w-3.5 h-3.5 text-indigo-400" />
             <span>View Function Definition</span>
+          </button>
+        </>
+      )}
+
+      {type === 'schema' && (
+        <>
+          <button
+            onClick={() => {
+              if (onOpenEavStudio) onOpenEavStudio(schemaName);
+              onClose();
+            }}
+            className="w-full px-3 py-1.5 text-left hover:bg-purple-950/60 text-purple-300 flex items-center space-x-2 transition-colors font-medium"
+          >
+            <Layers className="w-3.5 h-3.5 text-purple-400" />
+            <span>Open EAV Object Store Studio</span>
           </button>
         </>
       )}

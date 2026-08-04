@@ -72,10 +72,12 @@ export interface StoredProcedureObject {
 
 export interface SchemaObject {
   name: string;
+  category?: 'shrapnel' | 'standard' | string;
   tables: TableObject[];
   views: ViewObject[];
   triggers: TriggerObject[];
   procedures: StoredProcedureObject[];
+  comment?: string;
 }
 
 export interface QueryExecutionResult {
@@ -118,7 +120,7 @@ export interface SavedQuery {
 export interface QueryTab {
   id: string;
   title: string;
-  type: 'editor' | 'table-viewer' | 'erd';
+  type: 'editor' | 'table-viewer' | 'erd' | 'eav-studio';
   query: string;
   connectionId: string;
   schema?: string;

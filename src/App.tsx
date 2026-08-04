@@ -18,6 +18,7 @@ import { SqlEditor } from './components/QueryEditor/SqlEditor';
 import { ResultsPanel } from './components/Results/ResultsPanel';
 import { TableDataViewer } from './components/DataGrid/TableDataViewer';
 import { ErdViewer } from './components/Schema/ErdViewer';
+import { ShrapnelEavStudio } from './components/Eav/ShrapnelEavStudio';
 
 import { ConnectionModal } from './components/Modals/ConnectionModal';
 import { NewTableModal } from './components/Modals/NewTableModal';
@@ -194,6 +195,39 @@ LIMIT 10;`,
     setActiveTabId(newId);
   };
 
+  // Open EAV Studio Tab
+  const handleOpenEavStudio = (schemaName?: string) => {
+    const existing = tabs.find((t) => t.type === 'eav-studio');
+    if (existing) {
+      if (schemaName) {
+        setTabs((prev) =>
+          prev.map((t) => (t.id === existing.id ? { ...t, schema: schemaName } : t))
+        );
+      }
+      setActiveTabId(existing.id);
+      return;
+    }
+
+    const newId = `tab-eav-${Date.now()}`;
+    const newTab: QueryTab = {
+      id: newId,
+      title: 'shrapnel EAV Studio',
+      type: 'eav-studio',
+      query: '',
+      connectionId: activeConnection?.id || '',
+      schema: schemaName || 'shrapnel',
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  };
+
+  const handleUpdateSchemas = (updatedSchemas: SchemaObject[]) => {
+    setSchemas(updatedSchemas);
+    if (activeConnection) {
+      DBEngine.saveSchemas(activeConnection.id, updatedSchemas);
+    }
+  };
+
   // Execute Query
   const handleRunQuery = (queryToRun?: string) => {
     if (!activeConnection) return;
@@ -311,6 +345,7 @@ LIMIT 10;`,
         onOpenAiAssistant={() => setIsAiModalOpen(true)}
         onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
         onOpenErdView={handleOpenErdView}
+        onOpenEavStudio={() => handleOpenEavStudio()}
         onRunCurrentQuery={() => handleRunQuery()}
         onFormatCurrentQuery={handleFormatQuery}
         onRefreshSchema={handleRefreshSchema}
@@ -332,6 +367,7 @@ LIMIT 10;`,
           onOpenNewConnectionModal={() => setIsConnModalOpen(true)}
           onOpenNewTableModal={() => setIsNewTableModalOpen(true)}
           onRefreshSchema={handleRefreshSchema}
+          onOpenEavStudio={(sName) => handleOpenEavStudio(sName)}
         />
 
         {/* Main Workspace Area */}
@@ -389,6 +425,15 @@ LIMIT 10;`,
               onOpenTableQuery={(sName, tName) => handleOpenTableViewer(sName, tName)}
             />
           )}
+
+          {activeTab.type === 'eav-studio' && (
+            <ShrapnelEavStudio
+              schemas={schemas}
+              activeSchemaName={activeTab.schema || 'shrapnel'}
+              onUpdateSchema={handleUpdateSchemas}
+              onRunQueryInConsole={(sql) => handleNewQueryTab(sql, 'EAV Query')}
+            />
+          )}
         </main>
       </div>
 
@@ -402,6 +447,7 @@ LIMIT 10;`,
         onViewProperties={(sName, oName, oData) =>
           setObjectDetailsModal({ open: true, schemaName: sName, objectName: oName, objectData: oData })
         }
+        onOpenEavStudio={(sName) => handleOpenEavStudio(sName)}
       />
 
       {/* Modals */}

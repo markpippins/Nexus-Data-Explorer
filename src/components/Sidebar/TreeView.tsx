@@ -41,6 +41,7 @@ interface TreeViewProps {
   onOpenNewConnectionModal: () => void;
   onOpenNewTableModal: () => void;
   onRefreshSchema: () => void;
+  onOpenEavStudio?: (schemaName?: string) => void;
 }
 
 export const TreeView: React.FC<TreeViewProps> = ({
@@ -187,6 +188,18 @@ export const TreeView: React.FC<TreeViewProps> = ({
                   <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 )}
                 <span className="truncate">{schema.name}</span>
+                {(schema.category === 'shrapnel' || schema.name === 'shrapnel') && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onOpenEavStudio) onOpenEavStudio(schema.name);
+                    }}
+                    title="Open EAV Studio"
+                    className="px-1.5 py-0.2 text-[9px] bg-purple-950/80 text-purple-300 border border-purple-700/50 rounded font-semibold ml-1 hover:bg-purple-900 transition-colors"
+                  >
+                    shrapnel
+                  </span>
+                )}
                 <span className="text-[10px] text-[#64748B] font-mono ml-auto">
                   ({schema.tables.length})
                 </span>

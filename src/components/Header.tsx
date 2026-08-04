@@ -24,10 +24,11 @@ interface HeaderProps {
   onOpenAiAssistant: () => void;
   onOpenShortcutsModal: () => void;
   onOpenErdView: () => void;
+  onOpenEavStudio: () => void;
   onRunCurrentQuery: () => void;
   onFormatCurrentQuery: () => void;
   onRefreshSchema: () => void;
-  activeTabType: 'editor' | 'table-viewer' | 'erd';
+  activeTabType: 'editor' | 'table-viewer' | 'erd' | 'eav-studio';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAiAssistant,
   onOpenShortcutsModal,
   onOpenErdView,
+  onOpenEavStudio,
   onRunCurrentQuery,
   onFormatCurrentQuery,
   onRefreshSchema,
@@ -135,6 +137,15 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Network className="w-3 h-3 text-blue-400" />
           <span className="hidden md:inline">Schema ERD</span>
+        </button>
+
+        <button
+          onClick={onOpenEavStudio}
+          className="px-2.5 py-1 bg-purple-950/80 hover:bg-purple-900 border border-purple-700/60 text-purple-200 font-medium text-xs rounded flex items-center space-x-1.5 transition-colors shadow-sm"
+        >
+          <Layers className="w-3 h-3 text-purple-400" />
+          <span className="hidden lg:inline">EAV Studio</span>
+          <span className="px-1 py-0.2 text-[9px] bg-purple-800/80 text-purple-200 rounded font-mono">shrapnel</span>
         </button>
       </div>
 

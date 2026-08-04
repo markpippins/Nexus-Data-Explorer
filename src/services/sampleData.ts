@@ -45,9 +45,295 @@ export const INITIAL_CONNECTIONS: DBConnection[] = [
   },
 ];
 
+export const SHRAPNEL_SCHEMA: SchemaObject = {
+  name: 'shrapnel',
+  category: 'shrapnel',
+  comment: 'Relational Object Store / Entity-Attribute-Value (EAV) system backed by PostgreSQL',
+  tables: [
+    {
+      name: 'field_type',
+      schema: 'shrapnel',
+      rowCount: 7,
+      comment: 'Type registry (1 Long, 2 String, 3 Double, 4 Boolean, 5 Timestamp, 6 JSONB, 7 UUID)',
+      columns: [
+        { name: 'code', type: 'INT', isPrimaryKey: true, isNullable: false },
+        { name: 'name', type: 'VARCHAR(50)', isNullable: false },
+        { name: 'description', type: 'TEXT', isNullable: true },
+        { name: 'pg_type', type: 'VARCHAR(50)', isNullable: false },
+      ],
+      data: [
+        { code: 1, name: 'Long', description: '64-bit integer', pg_type: 'bigint' },
+        { code: 2, name: 'String', description: 'Variable text', pg_type: 'text' },
+        { code: 3, name: 'Double', description: 'Double precision floating point', pg_type: 'double precision' },
+        { code: 4, name: 'Boolean', description: 'True/false boolean', pg_type: 'boolean' },
+        { code: 5, name: 'Timestamp', description: 'Date and time with time zone', pg_type: 'timestamptz' },
+        { code: 6, name: 'JSONB', description: 'Binary JSON object or array', pg_type: 'jsonb' },
+        { code: 7, name: 'UUID', description: 'Universally unique identifier', pg_type: 'uuid' },
+      ],
+    },
+    {
+      name: 'field',
+      schema: 'shrapnel',
+      rowCount: 6,
+      comment: 'Attribute definitions and unique property_name keys',
+      columns: [
+        { name: 'id', type: 'SERIAL', isPrimaryKey: true, isNullable: false },
+        { name: 'property_name', type: 'VARCHAR(100)', isNullable: false },
+        { name: 'name', type: 'VARCHAR(100)', isNullable: false },
+        { name: 'label', type: 'VARCHAR(100)', isNullable: true },
+        { name: 'field_type_code', type: 'INT', isNullable: false, isForeignKey: true, referencesTable: 'field_type', referencesColumn: 'code' },
+        { name: 'is_calculated', type: 'BOOLEAN', isNullable: false, defaultValue: 'false' },
+        { name: 'field_index', type: 'INT', isNullable: false, defaultValue: '0' },
+        { name: 'created_at', type: 'TIMESTAMP', isNullable: false, defaultValue: 'CURRENT_TIMESTAMP' },
+      ],
+      indexes: [
+        { name: 'idx_field_property_name', columns: ['property_name'], isUnique: true }
+      ],
+      data: [
+        { id: 1, property_name: 'full_name', name: 'Full Name', label: 'Customer Full Name', field_type_code: 2, is_calculated: false, field_index: 1, created_at: '2026-07-29 12:00:00' },
+        { id: 2, property_name: 'user_age', name: 'Age', label: 'User Age', field_type_code: 1, is_calculated: false, field_index: 2, created_at: '2026-07-29 12:00:00' },
+        { id: 3, property_name: 'is_active', name: 'Active Flag', label: 'Account Active', field_type_code: 4, is_calculated: false, field_index: 3, created_at: '2026-07-29 12:00:00' },
+        { id: 4, property_name: 'credit_score', name: 'Score', label: 'Credit Rating', field_type_code: 3, is_calculated: false, field_index: 4, created_at: '2026-07-29 12:00:00' },
+        { id: 5, property_name: 'last_login', name: 'Last Login', label: 'Timestamp of last access', field_type_code: 5, is_calculated: false, field_index: 5, created_at: '2026-07-29 12:00:00' },
+        { id: 6, property_name: 'metadata', name: 'System Meta', label: 'JSON Metadata payload', field_type_code: 6, is_calculated: false, field_index: 6, created_at: '2026-07-29 12:00:00' },
+      ],
+    },
+    {
+      name: 'object_instance',
+      schema: 'shrapnel',
+      rowCount: 3,
+      comment: 'Concrete entity object instances',
+      columns: [
+        { name: 'id', type: 'SERIAL', isPrimaryKey: true, isNullable: false },
+        { name: 'created_at', type: 'TIMESTAMP', isNullable: false, defaultValue: 'CURRENT_TIMESTAMP' },
+      ],
+      data: [
+        { id: 1, created_at: '2026-07-29 12:00:00' },
+        { id: 2, created_at: '2026-07-29 12:05:00' },
+        { id: 3, created_at: '2026-07-29 12:10:00' },
+      ],
+    },
+    {
+      name: 'value',
+      schema: 'shrapnel',
+      rowCount: 9,
+      comment: 'Base entry for one concrete value, references value_type_code',
+      columns: [
+        { name: 'id', type: 'SERIAL', isPrimaryKey: true, isNullable: false },
+        { name: 'value_type_code', type: 'INT', isNullable: false, isForeignKey: true, referencesTable: 'field_type', referencesColumn: 'code' },
+        { name: 'created_at', type: 'TIMESTAMP', isNullable: false, defaultValue: 'CURRENT_TIMESTAMP' },
+      ],
+      data: [
+        { id: 101, value_type_code: 2, created_at: '2026-07-29 12:00:00' },
+        { id: 102, value_type_code: 1, created_at: '2026-07-29 12:00:00' },
+        { id: 103, value_type_code: 4, created_at: '2026-07-29 12:00:00' },
+        { id: 104, value_type_code: 2, created_at: '2026-07-29 12:05:00' },
+        { id: 105, value_type_code: 1, created_at: '2026-07-29 12:05:00' },
+        { id: 106, value_type_code: 3, created_at: '2026-07-29 12:05:00' },
+        { id: 107, value_type_code: 2, created_at: '2026-07-29 12:10:00' },
+        { id: 108, value_type_code: 5, created_at: '2026-07-29 12:10:00' },
+        { id: 109, value_type_code: 6, created_at: '2026-07-29 12:10:00' },
+      ],
+    },
+    {
+      name: 'value_string',
+      schema: 'shrapnel',
+      rowCount: 3,
+      comment: '1:1 String physical value table',
+      columns: [
+        { name: 'id', type: 'INT', isPrimaryKey: true, isNullable: false, isForeignKey: true, referencesTable: 'value', referencesColumn: 'id' },
+        { name: 'val', type: 'TEXT', isNullable: false },
+      ],
+      data: [
+        { id: 101, val: 'Alice Vance' },
+        { id: 104, val: 'Bob Dylan' },
+        { id: 107, val: 'Charlie Brown' },
+      ],
+    },
+    {
+      name: 'value_long',
+      schema: 'shrapnel',
+      rowCount: 2,
+      comment: '1:1 Long physical value table',
+      columns: [
+        { name: 'id', type: 'INT', isPrimaryKey: true, isNullable: false, isForeignKey: true, referencesTable: 'value', referencesColumn: 'id' },
+        { name: 'val', type: 'BIGINT', isNullable: false },
+      ],
+      data: [
+        { id: 102, val: 30 },
+        { id: 105, val: 42 },
+      ],
+    },
+    {
+      name: 'value_double',
+      schema: 'shrapnel',
+      rowCount: 1,
+      comment: '1:1 Double precision physical value table',
+      columns: [
+        { name: 'id', type: 'INT', isPrimaryKey: true, isNullable: false, isForeignKey: true, referencesTable: 'value', referencesColumn: 'id' },
+        { name: 'val', type: 'DOUBLE PRECISION', isNullable: false },
+      ],
+      data: [
+        { id: 106, val: 785.50 },
+      ],
+    },
+    {
+      name: 'value_boolean',
+      schema: 'shrapnel',
+      rowCount: 1,
+      comment: '1:1 Boolean physical value table',
+      columns: [
+        { name: 'id', type: 'INT', isPrimaryKey: true, isNullable: false, isForeignKey: true, referencesTable: 'value', referencesColumn: 'id' },
+        { name: 'val', type: 'BOOLEAN', isNullable: false },
+      ],
+      data: [
+        { id: 103, val: true },
+      ],
+    },
+    {
+      name: 'value_timestamp',
+      schema: 'shrapnel',
+      rowCount: 1,
+      comment: '1:1 Timestamp physical value table',
+      columns: [
+        { name: 'id', type: 'INT', isPrimaryKey: true, isNullable: false, isForeignKey: true, referencesTable: 'value', referencesColumn: 'id' },
+        { name: 'val', type: 'TIMESTAMPTZ', isNullable: false },
+      ],
+      data: [
+        { id: 108, val: '2026-08-01 10:30:00+00' },
+      ],
+    },
+    {
+      name: 'value_jsonb',
+      schema: 'shrapnel',
+      rowCount: 1,
+      comment: '1:1 JSONB physical value table',
+      columns: [
+        { name: 'id', type: 'INT', isPrimaryKey: true, isNullable: false, isForeignKey: true, referencesTable: 'value', referencesColumn: 'id' },
+        { name: 'val', type: 'JSONB', isNullable: false },
+      ],
+      data: [
+        { id: 109, val: '{"role": "admin", "permissions": ["read", "write", "decode"]}' },
+      ],
+    },
+    {
+      name: 'value_uuid',
+      schema: 'shrapnel',
+      rowCount: 0,
+      comment: '1:1 UUID physical value table',
+      columns: [
+        { name: 'id', type: 'INT', isPrimaryKey: true, isNullable: false, isForeignKey: true, referencesTable: 'value', referencesColumn: 'id' },
+        { name: 'val', type: 'UUID', isNullable: false },
+      ],
+      data: [],
+    },
+    {
+      name: 'object_attribute_value',
+      schema: 'shrapnel',
+      rowCount: 9,
+      comment: 'Junction binding: (object_id, field_id) -> value_id',
+      columns: [
+        { name: 'id', type: 'SERIAL', isPrimaryKey: true, isNullable: false },
+        { name: 'object_id', type: 'INT', isNullable: false, isForeignKey: true, referencesTable: 'object_instance', referencesColumn: 'id' },
+        { name: 'field_id', type: 'INT', isNullable: false, isForeignKey: true, referencesTable: 'field', referencesColumn: 'id' },
+        { name: 'value_id', type: 'INT', isNullable: false, isForeignKey: true, referencesTable: 'value', referencesColumn: 'id' },
+        { name: 'bound_at', type: 'TIMESTAMP', isNullable: false, defaultValue: 'CURRENT_TIMESTAMP' },
+      ],
+      indexes: [
+        { name: 'uq_object_field', columns: ['object_id', 'field_id'], isUnique: true },
+      ],
+      data: [
+        { id: 1, object_id: 1, field_id: 1, value_id: 101, bound_at: '2026-07-29 12:00:00' },
+        { id: 2, object_id: 1, field_id: 2, value_id: 102, bound_at: '2026-07-29 12:00:00' },
+        { id: 3, object_id: 1, field_id: 3, value_id: 103, bound_at: '2026-07-29 12:00:00' },
+        { id: 4, object_id: 2, field_id: 1, value_id: 104, bound_at: '2026-07-29 12:05:00' },
+        { id: 5, object_id: 2, field_id: 2, value_id: 105, bound_at: '2026-07-29 12:05:00' },
+        { id: 6, object_id: 2, field_id: 4, value_id: 106, bound_at: '2026-07-29 12:05:00' },
+        { id: 7, object_id: 3, field_id: 1, value_id: 107, bound_at: '2026-07-29 12:10:00' },
+        { id: 8, object_id: 3, field_id: 5, value_id: 108, bound_at: '2026-07-29 12:10:00' },
+        { id: 9, object_id: 3, field_id: 6, value_id: 109, bound_at: '2026-07-29 12:10:00' },
+      ],
+    },
+  ],
+  views: [
+    {
+      name: 'v_client_customers',
+      schema: 'shrapnel',
+      comment: 'Domain-specific client view pivoting shrapnel EAV attributes into standard tabular columns',
+      definition: `CREATE OR REPLACE VIEW shrapnel.v_client_customers AS
+SELECT 
+    o.id AS object_id,
+    MAX(CASE WHEN f.property_name = 'full_name' THEN v_str.val END) AS full_name,
+    MAX(CASE WHEN f.property_name = 'user_age' THEN v_lng.val END) AS age,
+    MAX(CASE WHEN f.property_name = 'is_active' THEN v_bool.val END) AS is_active,
+    MAX(CASE WHEN f.property_name = 'credit_score' THEN v_dbl.val END) AS credit_score,
+    o.created_at
+FROM shrapnel.object_instance o
+LEFT JOIN shrapnel.object_attribute_value oav ON o.id = oav.object_id
+LEFT JOIN shrapnel.field f ON oav.field_id = f.id
+LEFT JOIN shrapnel.value_string v_str ON oav.value_id = v_str.id
+LEFT JOIN shrapnel.value_long v_lng ON oav.value_id = v_lng.id
+LEFT JOIN shrapnel.value_boolean v_bool ON oav.value_id = v_bool.id
+LEFT JOIN shrapnel.value_double v_dbl ON oav.value_id = v_dbl.id
+GROUP BY o.id, o.created_at;`,
+    }
+  ],
+  triggers: [
+    {
+      name: 'trg_value_extension_type_guard',
+      schema: 'shrapnel',
+      tableName: 'value_string',
+      timing: 'BEFORE',
+      event: 'INSERT',
+      functionName: 'fn_guard_value_extension_type()',
+      definition: `CREATE TRIGGER trg_value_extension_type_guard
+BEFORE INSERT OR UPDATE ON shrapnel.value_string
+FOR EACH ROW EXECUTE FUNCTION shrapnel.fn_guard_value_extension_type();`
+    }
+  ],
+  procedures: [
+    {
+      name: 'fn_decode_shrapnel_object',
+      schema: 'shrapnel',
+      returnType: 'JSONB',
+      parameters: [{ name: 'p_object_id', type: 'INT' }],
+      comment: 'Decodes all EAV bindings for a given object instance into a flat JSON object',
+      definition: `CREATE OR REPLACE FUNCTION shrapnel.fn_decode_shrapnel_object(p_object_id INT)
+RETURNS JSONB AS $$
+DECLARE
+    v_result JSONB := '{}'::jsonb;
+BEGIN
+    SELECT jsonb_object_agg(f.property_name, COALESCE(
+        to_jsonb(vs.val),
+        to_jsonb(vl.val),
+        to_jsonb(vd.val),
+        to_jsonb(vb.val),
+        to_jsonb(vt.val),
+        vj.val,
+        to_jsonb(vu.val)
+    )) INTO v_result
+    FROM shrapnel.object_attribute_value oav
+    JOIN shrapnel.field f ON oav.field_id = f.id
+    LEFT JOIN shrapnel.value_string vs ON oav.value_id = vs.id
+    LEFT JOIN shrapnel.value_long vl ON oav.value_id = vl.id
+    LEFT JOIN shrapnel.value_double vd ON oav.value_id = vd.id
+    LEFT JOIN shrapnel.value_boolean vb ON oav.value_id = vb.id
+    LEFT JOIN shrapnel.value_timestamp vt ON oav.value_id = vt.id
+    LEFT JOIN shrapnel.value_jsonb vj ON oav.value_id = vj.id
+    LEFT JOIN shrapnel.value_uuid vu ON oav.value_id = vu.id
+    WHERE oav.object_id = p_object_id;
+
+    RETURN v_result;
+END;
+$$ LANGUAGE plpgsql;`,
+    }
+  ]
+};
+
 export const ECOMMERCE_SCHEMAS: SchemaObject[] = [
   {
     name: 'public',
+    category: 'standard',
     tables: [
       {
         name: 'customers',
@@ -303,7 +589,8 @@ $$ LANGUAGE plpgsql;`
     views: [],
     triggers: [],
     procedures: []
-  }
+  },
+  SHRAPNEL_SCHEMA
 ];
 
 export const FINANCIAL_SCHEMAS: SchemaObject[] = [
