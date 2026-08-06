@@ -28,13 +28,13 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'grid' | 'messages' | 'plan' | 'history'>('grid');
 
   return (
-    <div className="h-64 bg-[#0F1115] border-t border-[#2D3139] flex flex-col font-mono text-xs select-none shrink-0 overflow-hidden">
+    <div className="h-64 bg-[#0F1115] border-t border-[#2D3139] flex flex-col font-mono text-sm select-none shrink-0 overflow-hidden">
       {/* Results Header Sub-tabs */}
       <div className="h-8 bg-[#181A1F] border-b border-[#2D3139] px-3 flex items-center justify-between text-[#E2E8F0] shrink-0">
         <div className="flex items-center space-x-1">
           <button
             onClick={() => setActiveSubTab('grid')}
-            className={`px-3 py-1 rounded text-xs flex items-center space-x-1.5 transition-colors ${
+            className={`px-3 py-1 rounded text-sm flex items-center space-x-1.5 transition-colors ${
               activeSubTab === 'grid'
                 ? 'bg-[#2D3139] text-blue-400 font-medium'
                 : 'text-[#94A3B8] hover:text-[#E2E8F0]'
@@ -51,7 +51,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
 
           <button
             onClick={() => setActiveSubTab('messages')}
-            className={`px-3 py-1 rounded text-xs flex items-center space-x-1.5 transition-colors ${
+            className={`px-3 py-1 rounded text-sm flex items-center space-x-1.5 transition-colors ${
               activeSubTab === 'messages'
                 ? 'bg-[#2D3139] text-blue-400 font-medium'
                 : 'text-[#94A3B8] hover:text-[#E2E8F0]'
@@ -66,7 +66,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
 
           <button
             onClick={() => setActiveSubTab('plan')}
-            className={`px-3 py-1 rounded text-xs flex items-center space-x-1.5 transition-colors ${
+            className={`px-3 py-1 rounded text-sm flex items-center space-x-1.5 transition-colors ${
               activeSubTab === 'plan'
                 ? 'bg-[#2D3139] text-blue-400 font-medium'
                 : 'text-[#94A3B8] hover:text-[#E2E8F0]'
@@ -78,7 +78,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
 
           <button
             onClick={() => setActiveSubTab('history')}
-            className={`px-3 py-1 rounded text-xs flex items-center space-x-1.5 transition-colors ${
+            className={`px-3 py-1 rounded text-sm flex items-center space-x-1.5 transition-colors ${
               activeSubTab === 'history'
                 ? 'bg-[#2D3139] text-blue-400 font-medium'
                 : 'text-[#94A3B8] hover:text-[#E2E8F0]'
@@ -121,7 +121,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
           activeResult ? (
             <DataGridTable result={activeResult} />
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-[#64748B] font-mono text-xs">
+            <div className="flex-1 flex flex-col items-center justify-center text-[#64748B] font-mono text-sm">
               <Play className="w-8 h-8 text-[#2D3139] mb-2" />
               <p>Execute a SQL query to view results here.</p>
               <p className="text-[11px] text-[#4B5563] mt-1">Press Ctrl+Enter or click 'Execute'</p>
@@ -130,7 +130,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
         )}
 
         {activeSubTab === 'messages' && (
-          <div className="flex-1 p-4 overflow-auto custom-scrollbar font-mono text-xs space-y-3">
+          <div className="flex-1 p-4 overflow-auto custom-scrollbar font-mono text-sm space-y-3">
             {activeResult ? (
               <div className="space-y-2">
                 <div className="p-3 bg-[#181A1F] rounded border border-[#2D3139]">
@@ -166,7 +166,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
         )}
 
         {activeSubTab === 'plan' && (
-          <div className="flex-1 p-4 overflow-auto custom-scrollbar font-mono text-xs">
+          <div className="flex-1 p-4 overflow-auto custom-scrollbar font-mono text-sm">
             {activeResult?.plan ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-[#2D3139] text-[#94A3B8] text-[11px]">
@@ -182,7 +182,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
         )}
 
         {activeSubTab === 'history' && (
-          <div className="flex-1 overflow-auto custom-scrollbar p-2 space-y-1.5 font-mono text-xs">
+          <div className="flex-1 overflow-auto custom-scrollbar p-2 space-y-1.5 font-mono text-sm">
             {history.length === 0 ? (
               <p className="text-[#64748B] p-4 text-center">No query execution history yet.</p>
             ) : (

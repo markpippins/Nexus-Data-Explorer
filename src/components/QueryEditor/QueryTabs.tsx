@@ -26,7 +26,7 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
             <div
               key={tab.id}
               onClick={() => onSelectTab(tab.id)}
-              className={`group h-8 px-3 rounded-t flex items-center space-x-2 text-xs font-mono cursor-pointer transition-all ${
+              className={`group h-8 px-3 rounded-t flex items-center space-x-2 text-sm font-mono cursor-pointer transition-all ${
                 isActive
                   ? 'bg-[#0F1115] text-[#E2E8F0] border-t-2 border-t-blue-500 font-medium border-x border-[#2D3139]'
                   : 'bg-[#181A1F] text-[#94A3B8] hover:text-[#E2E8F0] hover:bg-[#2D3139]/50 border-t-2 border-transparent'

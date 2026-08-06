@@ -64,7 +64,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     <div
       ref={menuRef}
       style={{ top: `${state.y}px`, left: `${state.x}px` }}
-      className="fixed z-50 w-56 bg-[#1F232B] border border-[#3B414D] rounded-lg shadow-2xl py-1.5 text-[#E2E8F0] text-xs font-sans animate-in fade-in zoom-in-95 duration-100"
+      className="fixed z-50 w-56 bg-[#1F232B] border border-[#3B414D] rounded-lg shadow-2xl py-1.5 text-[#E2E8F0] text-sm font-sans animate-in fade-in zoom-in-95 duration-100"
     >
       <div className="px-3 py-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-[#94A3B8] border-b border-[#2D3139] flex items-center justify-between">
         <span className="truncate">{objectName || schemaName}</span>

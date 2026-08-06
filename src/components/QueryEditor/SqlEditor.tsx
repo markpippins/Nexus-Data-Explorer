@@ -215,7 +215,7 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
         <div className="flex items-center space-x-2">
           <button
             onClick={handleRunClick}
-            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded shadow-sm flex items-center space-x-1 transition-colors"
+            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded shadow-sm flex items-center space-x-1 transition-colors"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>{selectedText ? 'Run Selection' : 'Run Query'}</span>
@@ -294,7 +294,7 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
           beforeMount={handleBeforeMount}
           onMount={handleMount}
           loading={
-            <div className="flex items-center justify-center h-full text-[#94A3B8] font-mono text-xs space-x-2">
+            <div className="flex items-center justify-center h-full text-[#94A3B8] font-mono text-sm space-x-2">
               <Code className="w-4 h-4 text-blue-400 animate-pulse" />
               <span>Initializing Monaco SQL Editor...</span>
             </div>

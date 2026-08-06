@@ -52,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center space-x-3">
         <div className="flex items-center space-x-2">
           <div className="w-3 h-3 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-          <span className="text-xs font-bold tracking-tight uppercase text-white">
+          <span className="text-sm font-bold tracking-tight uppercase text-white">
             FluxDB <span className="font-normal opacity-50 text-[#94A3B8]">Workbench</span>
           </span>
         </div>
@@ -86,7 +86,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenNewConnectionModal}
             title="Add New Connection"
-            className="p-1 bg-[#2D3139] hover:bg-[#3B414D] text-[#94A3B8] hover:text-white rounded border border-[#3B414D] transition-colors text-xs"
+            className="p-1 bg-[#2D3139] hover:bg-[#3B414D] text-[#94A3B8] hover:text-white rounded border border-[#3B414D] transition-colors text-sm"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -94,7 +94,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onRefreshSchema}
             title="Refresh Database Schema"
-            className="p-1 bg-[#2D3139] hover:bg-[#3B414D] text-[#94A3B8] hover:text-white rounded border border-[#3B414D] transition-colors text-xs"
+            className="p-1 bg-[#2D3139] hover:bg-[#3B414D] text-[#94A3B8] hover:text-white rounded border border-[#3B414D] transition-colors text-sm"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
@@ -107,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
           <>
             <button
               onClick={onRunCurrentQuery}
-              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs rounded shadow-sm flex items-center space-x-1.5 transition-colors"
+              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded shadow-sm flex items-center space-x-1.5 transition-colors"
             >
               <Play className="w-3 h-3 fill-current" />
               <span>Execute</span>
@@ -115,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={onFormatCurrentQuery}
-              className="px-2.5 py-1 bg-[#2D3139] hover:bg-[#3B414D] border border-[#3B414D] text-[#E2E8F0] font-medium text-xs rounded flex items-center space-x-1.5 transition-colors"
+              className="px-2.5 py-1 bg-[#2D3139] hover:bg-[#3B414D] border border-[#3B414D] text-[#E2E8F0] font-medium text-sm rounded flex items-center space-x-1.5 transition-colors"
             >
               <AlignLeft className="w-3 h-3" />
               <span className="hidden md:inline">Format SQL</span>
@@ -125,7 +125,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={onOpenNewTableModal}
-          className="px-2.5 py-1 bg-[#2D3139] hover:bg-[#3B414D] border border-[#3B414D] text-[#E2E8F0] font-medium text-xs rounded flex items-center space-x-1.5 transition-colors"
+          className="px-2.5 py-1 bg-[#2D3139] hover:bg-[#3B414D] border border-[#3B414D] text-[#E2E8F0] font-medium text-sm rounded flex items-center space-x-1.5 transition-colors"
         >
           <Layers className="w-3 h-3 text-cyan-400" />
           <span className="hidden md:inline">New Table DDL</span>
@@ -133,7 +133,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={onOpenErdView}
-          className="px-2.5 py-1 bg-[#2D3139] hover:bg-[#3B414D] border border-[#3B414D] text-[#E2E8F0] font-medium text-xs rounded flex items-center space-x-1.5 transition-colors"
+          className="px-2.5 py-1 bg-[#2D3139] hover:bg-[#3B414D] border border-[#3B414D] text-[#E2E8F0] font-medium text-sm rounded flex items-center space-x-1.5 transition-colors"
         >
           <Network className="w-3 h-3 text-blue-400" />
           <span className="hidden md:inline">Schema ERD</span>
@@ -153,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center space-x-2">
         <button
           onClick={onOpenAiAssistant}
-          className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs rounded shadow flex items-center space-x-1.5 transition-all"
+          className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-sm rounded shadow flex items-center space-x-1.5 transition-all"
         >
           <Sparkles className="w-3 h-3 text-yellow-300 animate-pulse" />
           <span>AI Architect</span>

@@ -41,7 +41,7 @@ export const TableDataViewer: React.FC<TableDataViewerProps> = ({
 
   if (!table) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-[#64748B] font-mono text-xs">
+      <div className="flex-1 flex flex-col items-center justify-center p-8 text-[#64748B] font-mono text-sm">
         <p>Table "{schemaName}.{tableName}" not found or dropped.</p>
       </div>
     );
@@ -68,14 +68,14 @@ export const TableDataViewer: React.FC<TableDataViewerProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0F1115] font-mono text-xs select-text overflow-hidden">
+    <div className="flex-1 flex flex-col bg-[#0F1115] font-mono text-sm select-text overflow-hidden">
       {/* Table Viewer Header Toolbar */}
       <div className="h-10 bg-[#181A1F] border-b border-[#2D3139] px-4 flex items-center justify-between text-[#E2E8F0] shrink-0">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-1.5 font-bold text-[#E2E8F0] text-sm">
             <TableIcon className="w-4 h-4 text-blue-400" />
             <span>{schemaName}.{tableName}</span>
-            <span className="text-xs text-[#64748B] font-normal ml-2">({table.rowCount} total records)</span>
+            <span className="text-sm text-[#64748B] font-normal ml-2">({table.rowCount} total records)</span>
           </div>
 
           <div className="relative">
@@ -85,7 +85,7 @@ export const TableDataViewer: React.FC<TableDataViewerProps> = ({
               placeholder="Search table rows..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-[#0F1115] border border-[#2D3139] rounded pl-8 pr-2 py-1 text-xs text-[#E2E8F0] focus:outline-none focus:border-blue-500 placeholder:text-[#64748B]"
+              className="bg-[#0F1115] border border-[#2D3139] rounded pl-8 pr-2 py-1 text-sm text-[#E2E8F0] focus:outline-none focus:border-blue-500 placeholder:text-[#64748B]"
             />
           </div>
         </div>
@@ -140,7 +140,7 @@ export const TableDataViewer: React.FC<TableDataViewerProps> = ({
               {table.columns.map((col) => (
                 <th
                   key={col.name}
-                  className="px-3 py-2 border-b border-r border-[#2D3139] text-[#E2E8F0] font-semibold text-xs font-mono"
+                  className="px-3 py-2 border-b border-r border-[#2D3139] text-[#E2E8F0] font-semibold text-sm font-mono"
                 >
                   <div className="flex items-center space-x-1.5">
                     {col.isPrimaryKey && <Key className="w-3 h-3 text-amber-400 shrink-0" />}
@@ -173,7 +173,7 @@ export const TableDataViewer: React.FC<TableDataViewerProps> = ({
                       <td
                         key={col.name}
                         onDoubleClick={() => setEditingCell({ rIdx, col: col.name, val })}
-                        className="px-3 py-1.5 border-r border-[#2D3139]/80 text-[#E2E8F0] truncate max-w-xs font-mono text-xs cursor-pointer hover:bg-[#2D3139]"
+                        className="px-3 py-1.5 border-r border-[#2D3139]/80 text-[#E2E8F0] truncate max-w-xs font-mono text-sm cursor-pointer hover:bg-[#2D3139]"
                       >
                         {isEditing ? (
                           <div className="flex items-center space-x-1">
@@ -186,7 +186,7 @@ export const TableDataViewer: React.FC<TableDataViewerProps> = ({
                                 if (e.key === 'Escape') setEditingCell(null);
                               }}
                               autoFocus
-                              className="w-full bg-[#0F1115] border border-blue-500 rounded px-1.5 py-0.5 text-xs text-white outline-none"
+                              className="w-full bg-[#0F1115] border border-blue-500 rounded px-1.5 py-0.5 text-sm text-white outline-none"
                             />
                             <button onClick={handleSaveCell} className="p-0.5 text-emerald-400">
                               <Check className="w-3.5 h-3.5" />
@@ -213,7 +213,7 @@ export const TableDataViewer: React.FC<TableDataViewerProps> = ({
       {/* Add Row Modal */}
       {isAddingRow && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[#1F232B] border border-[#3B414D] rounded-lg shadow-2xl p-4 font-mono text-xs space-y-4">
+          <div className="w-full max-w-md bg-[#1F232B] border border-[#3B414D] rounded-lg shadow-2xl p-4 font-mono text-sm space-y-4">
             <div className="flex items-center justify-between border-b border-[#2D3139] pb-2">
               <span className="font-bold text-blue-400 text-sm">Add New Row to {tableName}</span>
               <button onClick={() => setIsAddingRow(false)} className="text-[#94A3B8] hover:text-white">

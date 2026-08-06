@@ -26,7 +26,7 @@ export const ErdViewer: React.FC<ErdViewerProps> = ({ schemas, onOpenTableQuery 
   ) || [];
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0F1115] font-mono text-xs select-none overflow-hidden relative">
+    <div className="flex-1 flex flex-col bg-[#0F1115] font-mono text-sm select-none overflow-hidden relative">
       {/* ERD Control Bar */}
       <div className="h-10 bg-[#181A1F] border-b border-[#2D3139] px-4 flex items-center justify-between text-[#E2E8F0] shrink-0">
         <div className="flex items-center space-x-3">
@@ -40,7 +40,7 @@ export const ErdViewer: React.FC<ErdViewerProps> = ({ schemas, onOpenTableQuery 
             <select
               value={selectedSchema}
               onChange={(e) => setSelectedSchema(e.target.value)}
-              className="bg-[#0F1115] border border-[#2D3139] rounded px-2 py-1 text-xs text-[#E2E8F0] focus:outline-none focus:border-blue-500 font-mono"
+              className="bg-[#0F1115] border border-[#2D3139] rounded px-2 py-1 text-sm text-[#E2E8F0] focus:outline-none focus:border-blue-500 font-mono"
             >
               {schemas.map((s) => (
                 <option key={s.name} value={s.name}>
@@ -57,7 +57,7 @@ export const ErdViewer: React.FC<ErdViewerProps> = ({ schemas, onOpenTableQuery 
               placeholder="Search tables..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-[#0F1115] border border-[#2D3139] rounded pl-8 pr-2 py-1 text-xs text-[#E2E8F0] focus:outline-none focus:border-blue-500 placeholder:text-[#64748B]"
+              className="bg-[#0F1115] border border-[#2D3139] rounded pl-8 pr-2 py-1 text-sm text-[#E2E8F0] focus:outline-none focus:border-blue-500 placeholder:text-[#64748B]"
             />
           </div>
         </div>
@@ -104,7 +104,7 @@ export const ErdViewer: React.FC<ErdViewerProps> = ({ schemas, onOpenTableQuery 
               <div className="px-3 py-2 bg-[#181A1F] border-b border-[#2D3139] flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <Layers className="w-3.5 h-3.5 text-blue-400" />
-                  <span className="font-bold text-[#E2E8F0] text-xs font-mono">{table.name}</span>
+                  <span className="font-bold text-[#E2E8F0] text-sm font-mono">{table.name}</span>
                 </div>
                 <span className="text-[10px] text-[#64748B] font-mono">{table.rowCount} rows</span>
               </div>

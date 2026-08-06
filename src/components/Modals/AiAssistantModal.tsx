@@ -60,7 +60,7 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
-      <div className="w-full max-w-xl bg-[#1F232B] border border-[#3B414D] rounded-xl shadow-2xl overflow-hidden font-mono text-xs flex flex-col max-h-[85vh]">
+      <div className="w-full max-w-xl bg-[#1F232B] border border-[#3B414D] rounded-xl shadow-2xl overflow-hidden font-mono text-sm flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="px-5 py-3.5 bg-[#181A1F] border-b border-[#2D3139] flex items-center justify-between text-[#E2E8F0] shrink-0">
           <div className="flex items-center space-x-2">
@@ -133,7 +133,7 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
           )}
 
           {error && (
-            <div className="p-3 bg-rose-950/60 border border-rose-800 text-rose-300 rounded text-xs flex items-center space-x-2">
+            <div className="p-3 bg-rose-950/60 border border-rose-800 text-rose-300 rounded text-sm flex items-center space-x-2">
               <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
               <span>{error}</span>
             </div>

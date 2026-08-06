@@ -29,7 +29,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ result }) => {
 
   if (!result || result.columns.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-slate-500 font-mono text-xs">
+      <div className="flex-1 flex flex-col items-center justify-center p-8 text-slate-500 font-mono text-sm">
         <p>No tabular dataset returned for this statement.</p>
         {result.message && <p className="text-emerald-400 mt-2">{result.message}</p>}
       </div>
@@ -139,7 +139,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ result }) => {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0F1115] font-mono text-xs select-text overflow-hidden">
+    <div className="flex-1 flex flex-col bg-[#0F1115] font-mono text-sm select-text overflow-hidden">
       {/* Table Toolbar */}
       <div className="h-9 bg-[#181A1F] border-b border-[#2D3139] px-3 flex items-center justify-between text-[#E2E8F0] shrink-0">
         <div className="flex items-center space-x-3">
@@ -238,7 +238,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ result }) => {
                         key={col}
                         onDoubleClick={() => setInspectCell({ col, val })}
                         title="Double-click to inspect cell content"
-                        className="px-3 py-1 border-r border-[#2D3139]/80 text-[#E2E8F0] truncate max-w-xs font-mono text-xs cursor-pointer hover:bg-blue-950/30 transition-colors"
+                        className="px-3 py-1 border-r border-[#2D3139]/80 text-[#E2E8F0] truncate max-w-xs font-mono text-sm cursor-pointer hover:bg-blue-950/30 transition-colors"
                       >
                         {isNull ? (
                           <span className="text-[#64748B] italic">NULL</span>
@@ -308,7 +308,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ result }) => {
       {/* Inspect Cell Modal */}
       {inspectCell && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-[#1F232B] border border-[#3B414D] rounded-lg shadow-2xl overflow-hidden font-mono text-xs">
+          <div className="w-full max-w-lg bg-[#1F232B] border border-[#3B414D] rounded-lg shadow-2xl overflow-hidden font-mono text-sm">
             <div className="px-4 py-2 bg-[#181A1F] border-b border-[#2D3139] flex items-center justify-between text-[#E2E8F0]">
               <span className="font-bold text-blue-400">Column: {inspectCell.col}</span>
               <button
@@ -319,7 +319,7 @@ export const DataGridTable: React.FC<DataGridTableProps> = ({ result }) => {
               </button>
             </div>
             <div className="p-4 bg-[#0F1115] text-[#E2E8F0] overflow-auto max-h-96">
-              <pre className="whitespace-pre-wrap font-mono text-xs text-[#E2E8F0] bg-[#181A1F] p-3 rounded border border-[#2D3139]">
+              <pre className="whitespace-pre-wrap font-mono text-sm text-[#E2E8F0] bg-[#181A1F] p-3 rounded border border-[#2D3139]">
                 {typeof inspectCell.val === 'object'
                   ? JSON.stringify(inspectCell.val, null, 2)
                   : String(inspectCell.val)}

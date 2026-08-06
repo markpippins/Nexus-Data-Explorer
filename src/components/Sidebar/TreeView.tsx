@@ -140,14 +140,14 @@ export const TreeView: React.FC<TreeViewProps> = ({
             placeholder="Filter tables, views..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-[#0F1115] border border-[#2D3139] rounded text-xs text-[#E2E8F0] pl-8 pr-3 py-1 focus:outline-none focus:border-blue-500 font-mono transition-colors placeholder:text-[#64748B]"
+            className="w-full bg-[#0F1115] border border-[#2D3139] rounded text-sm text-[#E2E8F0] pl-8 pr-3 py-1 focus:outline-none focus:border-blue-500 font-mono transition-colors placeholder:text-[#64748B]"
           />
         </div>
       </div>
 
       {/* Active Connection Banner */}
       {activeConnection && (
-        <div className="px-3 py-1.5 bg-[#0F1115] border-b border-[#2D3139] flex items-center justify-between text-xs">
+        <div className="px-3 py-1.5 bg-[#0F1115] border-b border-[#2D3139] flex items-center justify-between text-sm">
           <div className="flex items-center space-x-2 truncate">
             <div
               className="w-2 h-2 rounded-full shrink-0"
@@ -164,13 +164,13 @@ export const TreeView: React.FC<TreeViewProps> = ({
       )}
 
       {/* Tree Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-2 font-mono text-xs space-y-1">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-2 font-mono text-sm space-y-1">
         {filteredSchemas.map((schema) => {
           const schemaId = `schema-${schema.name}`;
           const isSchemaExpanded = expandedNodes[schemaId] ?? true;
 
           return (
-            <div key={schema.name} className="text-xs">
+            <div key={schema.name} className="text-sm">
               {/* Schema Node */}
               <div
                 onClick={(e) => toggleNode(schemaId, e)}
@@ -317,7 +317,7 @@ export const TreeView: React.FC<TreeViewProps> = ({
                               onContextMenu={(e) =>
                                 handleRightClick(e, 'view', schema.name, view.name, view)
                               }
-                              className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-mono text-xs group"
+                              className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-mono text-sm group"
                             >
                               <Eye className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                               <span className="truncate group-hover:text-white">{view.name}</span>
@@ -355,7 +355,7 @@ export const TreeView: React.FC<TreeViewProps> = ({
                               onContextMenu={(e) =>
                                 handleRightClick(e, 'trigger', schema.name, trg.name, trg)
                               }
-                              className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-mono text-xs group"
+                              className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-mono text-sm group"
                             >
                               <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                               <span className="truncate group-hover:text-white">{trg.name}</span>
@@ -393,7 +393,7 @@ export const TreeView: React.FC<TreeViewProps> = ({
                               onContextMenu={(e) =>
                                 handleRightClick(e, 'procedure', schema.name, proc.name, proc)
                               }
-                              className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-mono text-xs group"
+                              className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-mono text-sm group"
                             >
                               <Code className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                               <span className="truncate group-hover:text-white">{proc.name}()</span>
@@ -411,7 +411,7 @@ export const TreeView: React.FC<TreeViewProps> = ({
       </div>
 
       {/* Bookmarks & Saved Snippets Footer Drawer */}
-      <div className="p-2 border-t border-[#2D3139] bg-[#0F1115] text-xs">
+      <div className="p-2 border-t border-[#2D3139] bg-[#0F1115] text-sm">
         <div
           onClick={(e) => toggleNode('drawer-saved', e)}
           className="flex items-center justify-between font-mono text-[#94A3B8] cursor-pointer p-1 rounded hover:bg-[#181A1F]"
