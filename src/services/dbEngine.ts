@@ -15,37 +15,69 @@ import {
 const LOCAL_CONNECTIONS_KEY = 'data_workbench_connections';
 const LOCAL_SCHEMAS_PREFIX = 'data_workbench_schemas_';
 
+// Environment-selected mode is authoritative: live by default; the in-browser
+// localStorage simulation runs only when VITE_DATA_EXPLORER_MODE=mock is set
+// explicitly. In live mode the engine talks to the local server, which opens a
+// real PostgreSQL connection per request using the user-entered credentials —
+// nothing is hardcoded, and a failed live request surfaces an error instead of
+// falling back to seeded sample rows.
+export const DATA_EXPLORER_MODE: 'mock' | 'live' =
+  ((import.meta as any).env?.['VITE_DATA_EXPLORER_MODE'] as string | undefined) === 'mock' ? 'mock' : 'live';
+
+export function isLiveMode(): boolean {
+  return DATA_EXPLORER_MODE === 'live';
+}
+
+async function api<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data as any)?.error || `${res.status} ${res.statusText}`);
+  }
+  return data as T;
+}
+
 export class DBEngine {
   private static connections: DBConnection[] = [];
   private static schemaStore: Record<string, SchemaObject[]> = {};
+  private static liveSchemaCache: Record<string, SchemaObject[]> = {};
 
   public static initialize(): void {
-    // Load connections from localStorage or initialize with samples
+    // Load user connections from localStorage. In live mode the app starts with
+    // NO connections — the user adds the real database, so sample connections
+    // can never be mistaken for live data. Mock mode keeps the sample set.
     const savedConns = localStorage.getItem(LOCAL_CONNECTIONS_KEY);
     if (savedConns) {
       try {
         this.connections = JSON.parse(savedConns);
       } catch {
-        this.connections = [...INITIAL_CONNECTIONS];
+        this.connections = [];
       }
     } else {
-      this.connections = [...INITIAL_CONNECTIONS];
+      this.connections = isLiveMode() ? [] : [...INITIAL_CONNECTIONS];
       this.saveConnections();
     }
 
-    // Load or set up schemas per connection
-    this.connections.forEach((conn) => {
-      const savedSchemas = localStorage.getItem(`${LOCAL_SCHEMAS_PREFIX}${conn.id}`);
-      if (savedSchemas) {
-        try {
-          this.schemaStore[conn.id] = JSON.parse(savedSchemas);
-        } catch {
+    // Mock mode only: hydrate the in-memory schema store from localStorage or
+    // seed samples. Live schemas are discovered from the real database on demand.
+    if (!isLiveMode()) {
+      this.connections.forEach((conn) => {
+        const savedSchemas = localStorage.getItem(`${LOCAL_SCHEMAS_PREFIX}${conn.id}`);
+        if (savedSchemas) {
+          try {
+            this.schemaStore[conn.id] = JSON.parse(savedSchemas);
+          } catch {
+            this.assignDefaultSchema(conn);
+          }
+        } else {
           this.assignDefaultSchema(conn);
         }
-      } else {
-        this.assignDefaultSchema(conn);
-      }
-    });
+      });
+    }
   }
 
   private static assignDefaultSchema(conn: DBConnection): void {
@@ -66,7 +98,7 @@ export class DBEngine {
 
   public static addConnection(connection: DBConnection): void {
     this.connections.push(connection);
-    this.assignDefaultSchema(connection);
+    if (!isLiveMode()) this.assignDefaultSchema(connection);
     this.saveConnections();
   }
 
@@ -81,11 +113,29 @@ export class DBEngine {
   public static deleteConnection(id: string): void {
     this.connections = this.connections.filter((c) => c.id !== id);
     delete this.schemaStore[id];
+    delete this.liveSchemaCache[id];
     localStorage.removeItem(`${LOCAL_SCHEMAS_PREFIX}${id}`);
     this.saveConnections();
   }
 
-  public static getSchemas(connectionId: string): SchemaObject[] {
+  public static async getSchemas(connectionId: string): Promise<SchemaObject[]> {
+    if (isLiveMode()) {
+      const conn = this.connections.find((c) => c.id === connectionId);
+      if (!conn) return [];
+      if (this.liveSchemaCache[connectionId]) return this.liveSchemaCache[connectionId];
+      // Real schema discovery against the user-supplied database.
+      const data = await api<{ schemas: SchemaObject[] }>('/api/db/schemas', {
+        host: conn.host,
+        port: conn.port,
+        database: conn.database,
+        username: conn.username,
+        password: conn.password,
+        ssl: conn.ssl,
+      });
+      this.liveSchemaCache[connectionId] = data.schemas || [];
+      return this.liveSchemaCache[connectionId];
+    }
+
     if (!this.schemaStore[connectionId]) {
       const conn = this.connections.find((c) => c.id === connectionId);
       if (conn) {
@@ -102,12 +152,25 @@ export class DBEngine {
   }
 
   public static saveSchema(connectionId: string): void {
+    // Live mode: the real database is the source of truth; nothing to persist.
+    if (isLiveMode()) return;
     if (this.schemaStore[connectionId]) {
       localStorage.setItem(
         `${LOCAL_SCHEMAS_PREFIX}${connectionId}`,
         JSON.stringify(this.schemaStore[connectionId])
       );
     }
+  }
+
+  // Persist an edited schema set (mock mode: localStorage; live mode: in-memory
+  // cache only — real DDL/DML goes through executeQuery).
+  public static saveSchemas(connectionId: string, schemas: SchemaObject[]): void {
+    if (isLiveMode()) {
+      this.liveSchemaCache[connectionId] = schemas;
+      return;
+    }
+    this.schemaStore[connectionId] = schemas;
+    this.saveSchema(connectionId);
   }
 
   // Generate DDL statements
@@ -159,12 +222,67 @@ export class DBEngine {
     }
   }
 
-  // Execute SQL statements
-  public static executeQuery(
+  // Execute SQL statements — real database in live mode, simulation in mock mode.
+  public static async executeQuery(
     connectionId: string,
     rawQuery: string,
     defaultSchema = 'public'
-  ): QueryExecutionResult {
+  ): Promise<QueryExecutionResult> {
+    if (isLiveMode()) {
+      const conn = this.connections.find((c) => c.id === connectionId);
+      const timestamp = new Date().toLocaleTimeString();
+      if (!conn) {
+        return {
+          query: rawQuery,
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          executionTimeMs: 0,
+          status: 'error',
+          error: 'No active connection — add a database connection first.',
+          timestamp,
+        };
+      }
+      try {
+        const result = await api<Partial<QueryExecutionResult>>('/api/db/query', {
+          connection: {
+            host: conn.host,
+            port: conn.port,
+            database: conn.database,
+            username: conn.username,
+            password: conn.password,
+            ssl: conn.ssl,
+          },
+          sql: rawQuery,
+        });
+        return {
+          query: rawQuery,
+          columns: result.columns || [],
+          columnTypes: result.columnTypes,
+          rows: result.rows || [],
+          rowCount: result.rowCount ?? (result.rows || []).length,
+          affectedRows: result.affectedRows,
+          executionTimeMs: result.executionTimeMs || 0,
+          status: (result.status as 'success' | 'error') || 'success',
+          error: result.error,
+          message: result.message,
+          timestamp,
+        };
+      } catch (err: any) {
+        // Live failure surfaces as a visible error — never seeded sample rows.
+        return {
+          query: rawQuery,
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          executionTimeMs: 0,
+          status: 'error',
+          error: err?.message || 'Query failed against the live database.',
+          timestamp,
+        };
+      }
+    }
+
     const startTime = performance.now();
     const timestamp = new Date().toLocaleTimeString();
     const cleanQuery = rawQuery.trim();
@@ -182,7 +300,7 @@ export class DBEngine {
       };
     }
 
-    const schemas = this.getSchemas(connectionId);
+    const schemas = this.schemaStore[connectionId] || [];
     const upperQuery = cleanQuery.toUpperCase();
 
     try {

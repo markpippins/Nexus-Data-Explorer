@@ -7,7 +7,7 @@ import {
   ContextMenuState,
   SavedQuery
 } from './types/database';
-import { DBEngine } from './services/dbEngine';
+import { DBEngine, isLiveMode } from './services/dbEngine';
 import { formatSqlQuery } from './services/sqlFormatter';
 
 import { Header } from './components/Header';
@@ -80,44 +80,84 @@ LIMIT 10;`,
 
   // Initialize DB Engine on mount
   useEffect(() => {
-    DBEngine.initialize();
-    const conns = DBEngine.getConnections();
-    setConnections(conns);
+    (async () => {
+      DBEngine.initialize();
+      const conns = DBEngine.getConnections();
+      setConnections(conns);
 
-    if (conns.length > 0) {
-      const active = conns[0];
-      setActiveConnection(active);
-      const loadedSchemas = DBEngine.getSchemas(active.id);
-      setSchemas(loadedSchemas);
+      if (conns.length > 0) {
+        const active = conns[0];
+        setActiveConnection(active);
+        try {
+          const loadedSchemas = await DBEngine.getSchemas(active.id);
+          setSchemas(loadedSchemas);
+        } catch (err: any) {
+          setSchemas([]);
+          setExecutionHistory((prev) => [
+            {
+              query: 'schema discovery',
+              columns: [],
+              rows: [],
+              rowCount: 0,
+              executionTimeMs: 0,
+              status: 'error',
+              error: `Failed to load schema from the live database: ${err?.message || String(err)}`,
+              timestamp: new Date().toLocaleTimeString(),
+            },
+            ...prev.slice(0, 49),
+          ]);
+        }
 
-      setTabs((prev) =>
-        prev.map((t) => (t.id === 'tab-1' ? { ...t, connectionId: active.id } : t))
-      );
-    }
-
-    // Load saved snippets
-    const saved = localStorage.getItem('data_workbench_saved_snippets');
-    if (saved) {
-      try {
-        setSavedQueries(JSON.parse(saved));
-      } catch {
-        setSavedQueries([]);
+        setTabs((prev) =>
+          prev.map((t) => (t.id === 'tab-1' ? { ...t, connectionId: active.id } : t))
+        );
       }
-    }
+
+      // Load saved snippets
+      const saved = localStorage.getItem('data_workbench_saved_snippets');
+      if (saved) {
+        try {
+          setSavedQueries(JSON.parse(saved));
+        } catch {
+          setSavedQueries([]);
+        }
+      }
+    })();
   }, []);
 
   // Handle switching active connection
-  const handleSelectConnection = (conn: DBConnection) => {
+  const handleSelectConnection = async (conn: DBConnection) => {
     setActiveConnection(conn);
-    const loadedSchemas = DBEngine.getSchemas(conn.id);
-    setSchemas(loadedSchemas);
+    try {
+      const loadedSchemas = await DBEngine.getSchemas(conn.id);
+      setSchemas(loadedSchemas);
+    } catch (err: any) {
+      setSchemas([]);
+      setExecutionHistory((prev) => [
+        {
+          query: 'schema discovery',
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          executionTimeMs: 0,
+          status: 'error',
+          error: `Failed to load schema from the live database: ${err?.message || String(err)}`,
+          timestamp: new Date().toLocaleTimeString(),
+        },
+        ...prev.slice(0, 49),
+      ]);
+    }
   };
 
   // Refresh current schema
-  const handleRefreshSchema = () => {
+  const handleRefreshSchema = async () => {
     if (activeConnection) {
-      const reloaded = DBEngine.getSchemas(activeConnection.id);
-      setSchemas([...reloaded]);
+      try {
+        const reloaded = await DBEngine.getSchemas(activeConnection.id);
+        setSchemas([...reloaded]);
+      } catch (err: any) {
+        setSchemas([]);
+      }
     }
   };
 
@@ -229,10 +269,10 @@ LIMIT 10;`,
   };
 
   // Execute Query
-  const handleRunQuery = (queryToRun?: string) => {
+  const handleRunQuery = async (queryToRun?: string) => {
     if (!activeConnection) return;
     const sql = queryToRun || activeTab.query;
-    const result = DBEngine.executeQuery(activeConnection.id, sql);
+    const result = await DBEngine.executeQuery(activeConnection.id, sql);
 
     // Update active tab result
     setTabs((prev) =>
@@ -277,10 +317,10 @@ LIMIT 10;`,
   };
 
   // Save new connection from modal
-  const handleSaveConnection = (newConn: DBConnection) => {
+  const handleSaveConnection = async (newConn: DBConnection) => {
     DBEngine.addConnection(newConn);
     setConnections(DBEngine.getConnections());
-    handleSelectConnection(newConn);
+    await handleSelectConnection(newConn);
   };
 
   // Save snippet
@@ -299,10 +339,11 @@ LIMIT 10;`,
   };
 
   // Delete table object from context menu
-  const handleDropObject = (type: string, schemaName: string, objectName: string) => {
+  const handleDropObject = async (type: string, schemaName: string, objectName: string) => {
     if (!activeConnection) return;
     const dropSql = `DROP ${type} ${schemaName}.${objectName};`;
-    DBEngine.executeQuery(activeConnection.id, dropSql);
+    const result = await DBEngine.executeQuery(activeConnection.id, dropSql);
+    setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
     handleRefreshSchema();
   };
 
@@ -310,26 +351,85 @@ LIMIT 10;`,
   const currentSchemaObj = schemas.find((s) => s.name === activeTab.schema) || schemas[0];
   const currentTableObj = currentSchemaObj?.tables.find((t) => t.name === activeTab.tableName);
 
-  const handleDataViewerUpdateRow = (rowIndex: number, updatedRow: Record<string, any>) => {
+  // In live mode, grid edits run REAL SQL against the connected database; in
+  // mock mode they mutate the in-memory sample data as before.
+  const sqlLiteral = (v: any): string => {
+    if (v === null || v === undefined) return 'NULL';
+    if (typeof v === 'number') return String(v);
+    if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+    if (v instanceof Date) return `'${v.toISOString()}'`;
+    return `'${String(v).replace(/'/g, "''")}'`;
+  };
+
+  const handleDataViewerUpdateRow = async (rowIndex: number, updatedRow: Record<string, any>) => {
     if (!currentTableObj || !activeConnection) return;
-    currentTableObj.data[rowIndex] = updatedRow;
+    const table = currentTableObj;
+    if (table.data[rowIndex]) table.data[rowIndex] = updatedRow;
     DBEngine.saveSchema(activeConnection.id);
+
+    if (isLiveMode()) {
+      const pkCol = table.columns.find((c) => c.isPrimaryKey) || table.columns[0];
+      if (!pkCol || updatedRow[pkCol.name] === undefined) {
+        setExecutionHistory((prev) => [{
+          query: `UPDATE ${table.schema}.${table.name}`,
+          columns: [], rows: [], rowCount: 0, executionTimeMs: 0, status: 'error',
+          error: 'Cannot update row: no primary key value available.',
+          timestamp: new Date().toLocaleTimeString(),
+        }, ...prev.slice(0, 49)]);
+        return;
+      }
+      const setClause = table.columns
+        .filter((c) => c.name !== pkCol.name)
+        .map((c) => `${c.name} = ${sqlLiteral(updatedRow[c.name])}`)
+        .join(', ');
+      const sql = `UPDATE ${table.schema}.${table.name} SET ${setClause} WHERE ${pkCol.name} = ${sqlLiteral(updatedRow[pkCol.name])};`;
+      const result = await DBEngine.executeQuery(activeConnection.id, sql);
+      setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
+    }
     handleRefreshSchema();
   };
 
-  const handleDataViewerAddRow = (newRow: Record<string, any>) => {
+  const handleDataViewerAddRow = async (newRow: Record<string, any>) => {
     if (!currentTableObj || !activeConnection) return;
-    currentTableObj.data.push(newRow);
-    currentTableObj.rowCount = currentTableObj.data.length;
+    const table = currentTableObj;
+    table.data.push(newRow);
+    table.rowCount = table.data.length;
     DBEngine.saveSchema(activeConnection.id);
+
+    if (isLiveMode()) {
+      const cols = table.columns.filter((c) => newRow[c.name] !== undefined);
+      if (cols.length === 0) return;
+      const sql = `INSERT INTO ${table.schema}.${table.name} (${cols.map((c) => c.name).join(', ')})
+        VALUES (${cols.map((c) => sqlLiteral(newRow[c.name])).join(', ')});`;
+      const result = await DBEngine.executeQuery(activeConnection.id, sql);
+      setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
+    }
     handleRefreshSchema();
   };
 
-  const handleDataViewerDeleteRow = (rowIndex: number) => {
+  const handleDataViewerDeleteRow = async (rowIndex: number) => {
     if (!currentTableObj || !activeConnection) return;
-    currentTableObj.data.splice(rowIndex, 1);
-    currentTableObj.rowCount = currentTableObj.data.length;
+    const table = currentTableObj;
+    const deletedRow = table.data[rowIndex];
+    table.data.splice(rowIndex, 1);
+    table.rowCount = table.data.length;
     DBEngine.saveSchema(activeConnection.id);
+
+    if (isLiveMode() && deletedRow) {
+      const pkCol = table.columns.find((c) => c.isPrimaryKey) || table.columns[0];
+      if (!pkCol || deletedRow[pkCol.name] === undefined) {
+        setExecutionHistory((prev) => [{
+          query: `DELETE FROM ${table.schema}.${table.name}`,
+          columns: [], rows: [], rowCount: 0, executionTimeMs: 0, status: 'error',
+          error: 'Cannot delete row: no primary key value available.',
+          timestamp: new Date().toLocaleTimeString(),
+        }, ...prev.slice(0, 49)]);
+        return;
+      }
+      const sql = `DELETE FROM ${table.schema}.${table.name} WHERE ${pkCol.name} = ${sqlLiteral(deletedRow[pkCol.name])};`;
+      const result = await DBEngine.executeQuery(activeConnection.id, sql);
+      setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
+    }
     handleRefreshSchema();
   };
 
@@ -460,9 +560,10 @@ LIMIT 10;`,
       <NewTableModal
         isOpen={isNewTableModalOpen}
         onClose={() => setIsNewTableModalOpen(false)}
-        onCreateTable={(ddl) => {
+        onCreateTable={async (ddl) => {
           if (activeConnection) {
-            DBEngine.executeQuery(activeConnection.id, ddl);
+            const result = await DBEngine.executeQuery(activeConnection.id, ddl);
+            setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
             handleRefreshSchema();
           }
         }}
