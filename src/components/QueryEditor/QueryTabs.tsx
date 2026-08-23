@@ -1,5 +1,5 @@
 import React from 'react';
-import { Terminal, Table, Network, Plus, X } from 'lucide-react';
+import { Terminal, Table, Network, Plus, X, Boxes, Layers, GitCompare } from 'lucide-react';
 import { QueryTab } from '../../types/database';
 
 interface QueryTabsProps {
@@ -35,6 +35,9 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
               {tab.type === 'editor' && <Terminal className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
               {tab.type === 'table-viewer' && <Table className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
               {tab.type === 'erd' && <Network className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+              {tab.type === 'query-builder' && <Boxes className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+              {tab.type === 'eav-studio' && <Layers className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+              {tab.type === 'diff-viewer' && <GitCompare className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
 
               <span className="truncate max-w-[140px]">{tab.title}</span>
 
@@ -59,10 +62,11 @@ export const QueryTabs: React.FC<QueryTabsProps> = ({
       <button
         onClick={onNewTab}
         title="Open New Query Console"
-        className="ml-2 p-1 bg-[#2D3139] hover:bg-[#3B414D] border border-[#3B414D] text-[#94A3B8] hover:text-white rounded transition-colors"
+        className="ml-2 p-1 bg-[#2D3139] hover:bg-[#3B414D] border border-[#3B414D] text-[#94A3B8] hover:text-white rounded transition-colors cursor-pointer"
       >
         <Plus className="w-3.5 h-3.5" />
       </button>
     </div>
   );
 };
+

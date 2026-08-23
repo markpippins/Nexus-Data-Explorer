@@ -19,6 +19,8 @@ import { ResultsPanel } from './components/Results/ResultsPanel';
 import { TableDataViewer } from './components/DataGrid/TableDataViewer';
 import { ErdViewer } from './components/Schema/ErdViewer';
 import { ShrapnelEavStudio } from './components/Eav/ShrapnelEavStudio';
+import { VisualQueryBuilder } from './components/QueryBuilder/VisualQueryBuilder';
+import { ResultSetDiffViewer } from './components/DiffViewer/ResultSetDiffViewer';
 
 import { ConnectionModal } from './components/Modals/ConnectionModal';
 import { NewTableModal } from './components/Modals/NewTableModal';
@@ -27,6 +29,15 @@ import { ObjectDetailsModal } from './components/Modals/ObjectDetailsModal';
 import { ShortcutsModal } from './components/Modals/ShortcutsModal';
 
 export default function App() {
+  const [theme, setTheme] = useState<'dark' | 'light' | 'steel'>(() => {
+    return (localStorage.getItem('data_workbench_theme') as 'dark' | 'light' | 'steel') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('data_workbench_theme', theme);
+  }, [theme]);
+
   const [connections, setConnections] = useState<DBConnection[]>([]);
   const [activeConnection, setActiveConnection] = useState<DBConnection | null>(null);
   const [schemas, setSchemas] = useState<SchemaObject[]>([]);
@@ -261,10 +272,65 @@ LIMIT 10;`,
     setActiveTabId(newId);
   };
 
+  // Open Visual Query Builder Tab
+  const handleOpenQueryBuilder = (schemaName?: string, tableName?: string) => {
+    const targetSchema = schemaName || schemas[0]?.name || 'public';
+    const targetTable = tableName || (schemas.find((s) => s.name === targetSchema)?.tables[0]?.name || 'customers');
+    const existing = tabs.find((t) => t.type === 'query-builder');
+    if (existing) {
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === existing.id
+            ? {
+                ...t,
+                schema: targetSchema,
+                tableName: targetTable,
+                title: `Query Builder: ${targetTable}`,
+              }
+            : t
+        )
+      );
+      setActiveTabId(existing.id);
+      return;
+    }
+
+    const newId = `tab-builder-${Date.now()}`;
+    const newTab: QueryTab = {
+      id: newId,
+      title: `Query Builder: ${targetTable}`,
+      type: 'query-builder',
+      query: '',
+      connectionId: activeConnection?.id || '',
+      schema: targetSchema,
+      tableName: targetTable,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  };
+
+  const handleOpenDiffViewer = (leftResult?: QueryExecutionResult, rightResult?: QueryExecutionResult) => {
+    const existing = tabs.find((t) => t.type === 'diff-viewer');
+    if (existing) {
+      setActiveTabId(existing.id);
+      return;
+    }
+
+    const newId = `tab-diff-${Date.now()}`;
+    const newTab: QueryTab = {
+      id: newId,
+      title: 'Diff Viewer',
+      type: 'diff-viewer',
+      query: '',
+      connectionId: activeConnection?.id || '',
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  };
+
   const handleUpdateSchemas = (updatedSchemas: SchemaObject[]) => {
     setSchemas(updatedSchemas);
     if (activeConnection) {
-      DBEngine.saveSchemas(activeConnection.id, updatedSchemas);
+      DBEngine.saveSchema(activeConnection.id);
     }
   };
 
@@ -446,10 +512,14 @@ LIMIT 10;`,
         onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
         onOpenErdView={handleOpenErdView}
         onOpenEavStudio={() => handleOpenEavStudio()}
+        onOpenQueryBuilder={() => handleOpenQueryBuilder()}
+        onOpenDiffViewer={() => handleOpenDiffViewer()}
         onRunCurrentQuery={() => handleRunQuery()}
         onFormatCurrentQuery={handleFormatQuery}
         onRefreshSchema={handleRefreshSchema}
         activeTabType={activeTab?.type || 'editor'}
+        theme={theme}
+        onChangeTheme={setTheme}
       />
 
       {/* Workbench Central Workspace */}
@@ -468,6 +538,7 @@ LIMIT 10;`,
           onOpenNewTableModal={() => setIsNewTableModalOpen(true)}
           onRefreshSchema={handleRefreshSchema}
           onOpenEavStudio={(sName) => handleOpenEavStudio(sName)}
+          onOpenQueryBuilder={(sName, tName) => handleOpenQueryBuilder(sName, tName)}
         />
 
         {/* Main Workspace Area */}
@@ -495,6 +566,7 @@ LIMIT 10;`,
                 onFormatQuery={handleFormatQuery}
                 onOpenAiAssistant={() => setIsAiModalOpen(true)}
                 onSaveSnippet={handleSaveSnippet}
+                onOpenQueryBuilder={() => handleOpenQueryBuilder()}
                 schemas={schemas}
               />
 
@@ -503,8 +575,20 @@ LIMIT 10;`,
                 activeResult={activeTab.activeResult || null}
                 history={executionHistory}
                 onReRunQuery={(q) => handleRunQuery(q)}
+                onOpenDiffTab={handleOpenDiffViewer}
+                activeConnectionId={activeConnection?.id}
+                schemas={schemas}
               />
             </div>
+          )}
+
+          {activeTab.type === 'diff-viewer' && (
+            <ResultSetDiffViewer
+              history={executionHistory}
+              activeConnectionId={activeConnection?.id}
+              schemas={schemas}
+              isEmbedded={false}
+            />
           )}
 
           {activeTab.type === 'table-viewer' && (
@@ -512,6 +596,9 @@ LIMIT 10;`,
               schemaName={activeTab.schema || 'public'}
               tableName={activeTab.tableName || ''}
               table={currentTableObj}
+              schemas={schemas}
+              onOpenTable={(sName, tName) => handleOpenTableViewer(sName, tName)}
+              onOpenQueryBuilder={(sName, tName) => handleOpenQueryBuilder(sName, tName)}
               onRefresh={handleRefreshSchema}
               onUpdateRow={handleDataViewerUpdateRow}
               onAddRow={handleDataViewerAddRow}
@@ -519,10 +606,24 @@ LIMIT 10;`,
             />
           )}
 
+          {activeTab.type === 'query-builder' && (
+            <VisualQueryBuilder
+              schemas={schemas}
+              activeConnectionId={activeConnection?.id}
+              initialSchema={activeTab.schema}
+              initialTable={activeTab.tableName}
+              onOpenInSqlEditor={(sql, title) => handleNewQueryTab(sql, title || 'Generated Query')}
+              onRunQueryInEngine={(sql) => handleRunQuery(sql)}
+            />
+          )}
+
           {activeTab.type === 'erd' && (
             <ErdViewer
               schemas={schemas}
               onOpenTableQuery={(sName, tName) => handleOpenTableViewer(sName, tName)}
+              globalTheme={theme}
+              onUpdateSchemas={handleUpdateSchemas}
+              onExecuteSql={(sql) => handleRunQuery(sql)}
             />
           )}
 
@@ -548,6 +649,7 @@ LIMIT 10;`,
           setObjectDetailsModal({ open: true, schemaName: sName, objectName: oName, objectData: oData })
         }
         onOpenEavStudio={(sName) => handleOpenEavStudio(sName)}
+        onOpenQueryBuilder={(sName, tName) => handleOpenQueryBuilder(sName, tName)}
       />
 
       {/* Modals */}

@@ -10,7 +10,8 @@ import {
   Info,
   Copy,
   Layers,
-  Code
+  Code,
+  Boxes
 } from 'lucide-react';
 import { ContextMenuState } from '../../types/database';
 
@@ -26,6 +27,7 @@ interface ContextMenuProps {
   onDropObject: (type: string, schemaName: string, objectName: string) => void;
   onViewProperties: (schemaName: string, objectName: string, objectData: any) => void;
   onOpenEavStudio?: (schemaName: string) => void;
+  onOpenQueryBuilder?: (schemaName?: string, tableName?: string) => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -35,6 +37,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onViewDataGrid,
   onDropObject,
   onViewProperties,
+  onOpenEavStudio,
+  onOpenQueryBuilder,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -84,6 +88,17 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           >
             <Eye className="w-3.5 h-3.5 text-blue-400" />
             <span>View Data Grid (Double Click)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              onOpenQueryBuilder?.(schemaName, objectName);
+              onClose();
+            }}
+            className="w-full px-3 py-1.5 text-left hover:bg-blue-950/60 flex items-center space-x-2 text-blue-300 font-medium transition-colors"
+          >
+            <Boxes className="w-3.5 h-3.5 text-blue-400" />
+            <span>Visual Query Builder</span>
           </button>
 
           <button
