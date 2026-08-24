@@ -6,6 +6,8 @@ interface ConnectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveConnection: (connection: DBConnection) => void;
+  /** When provided, the modal edits this existing connection in place. */
+  editing?: DBConnection | null;
 }
 
 const PRESET_COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4'];
@@ -14,34 +16,44 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   isOpen,
   onClose,
   onSaveConnection,
+  editing,
 }) => {
-  const [name, setName] = useState('');
-  const [host, setHost] = useState('pg-primary.internal.cloud.net');
-  const [port, setPort] = useState(5432);
-  const [database, setDatabase] = useState('production_db');
-  const [username, setUsername] = useState('postgres_admin');
-  const [password, setPassword] = useState('••••••••••••');
-  const [ssl, setSsl] = useState(true);
-  const [color, setColor] = useState('#3b82f6');
+  const [name, setName] = useState(editing?.name || '');
+  const [host, setHost] = useState(editing?.host || 'localhost');
+  const [port, setPort] = useState(editing?.port || 5432);
+  const [database, setDatabase] = useState(editing?.database || 'nexus');
+  const [username, setUsername] = useState(editing?.username || 'pguser');
+  const [password, setPassword] = useState(editing?.password || '');
+  const [ssl, setSsl] = useState(editing?.ssl ?? false);
+  const [color, setColor] = useState(editing?.color || '#3b82f6');
   const [testing, setTesting] = useState(false);
   const [testSuccess, setTestSuccess] = useState<string | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleTestConnection = async () => {
     setTesting(true);
     setTestSuccess(null);
+    setTestError(null);
 
     try {
+      // Send the full ConnSpec INCLUDING password+ssl — testing without the
+      // credentials the user just typed proves nothing.
       const res = await fetch('/api/db/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host, port, database, username }),
+        body: JSON.stringify({ host, port, database, username, password, ssl }),
       });
       const data = await res.json();
-      setTestSuccess(`Connected in ${data.latencyMs} ms! (${data.version})`);
-    } catch {
-      setTestSuccess('Connected successfully! (Latency: 14 ms)');
+      if (!res.ok || data.success === false) {
+        setTestError(data?.message || data?.error || `Connection failed (${res.status})`);
+      } else {
+        setTestSuccess(`Connected in ${data.latencyMs} ms! (${data.version})`);
+      }
+    } catch (err: any) {
+      // Fail-visible: never fabricate a success message.
+      setTestError(err?.message || 'Unable to reach the DB workbench backend');
     } finally {
       setTesting(false);
     }
@@ -50,9 +62,9 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     const newConn: DBConnection = {
-      id: `conn-custom-${Date.now()}`,
+      id: editing?.id || `conn-custom-${Date.now()}`,
       name: name || `${database} (${host})`,
-      engine: 'postgres',
+      engine: editing?.engine || 'postgres',
       host,
       port,
       database,
@@ -60,8 +72,8 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
       password,
       ssl,
       color,
-      status: 'connected',
-      createdAt: new Date().toISOString(),
+      status: 'disconnected',
+      createdAt: editing?.createdAt || new Date().toISOString(),
     };
     onSaveConnection(newConn);
     onClose();
@@ -74,7 +86,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
         <div className="px-5 py-3.5 bg-[#181A1F] border-b border-[#2D3139] flex items-center justify-between text-[#E2E8F0]">
           <div className="flex items-center space-x-2">
             <Database className="w-4 h-4 text-blue-400" />
-            <span className="font-bold text-sm">New PostgreSQL Connection</span>
+            <span className="font-bold text-sm">{editing ? 'Edit Connection' : 'New PostgreSQL Connection'}</span>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-[#2D3139] rounded text-[#94A3B8] hover:text-white">
             <X className="w-4 h-4" />
@@ -184,6 +196,12 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
             <div className="p-2.5 bg-emerald-950/60 border border-emerald-800 text-emerald-300 rounded flex items-center space-x-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>{testSuccess}</span>
+            </div>
+          )}
+          {testError && (
+            <div className="p-2.5 bg-rose-950/60 border border-rose-800 text-rose-300 rounded flex items-center space-x-2">
+              <X className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{testError}</span>
             </div>
           )}
 

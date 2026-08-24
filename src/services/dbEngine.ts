@@ -183,11 +183,17 @@ export class DBEngine {
     this.saveConnections();
   }
 
-  public static async getSchemas(connectionId: string): Promise<SchemaObject[]> {
+  public static async getSchemas(
+    connectionId: string,
+    opts?: { bypassCache?: boolean }
+  ): Promise<SchemaObject[]> {
     if (isLiveMode()) {
       const conn = this.connections.find((c) => c.id === connectionId);
       if (!conn) return [];
-      if (this.liveSchemaCache[connectionId]) return this.liveSchemaCache[connectionId];
+      // Only trust a NON-empty cache ([] is truthy in JS — caching it here used
+      // to make Refresh permanently return an empty tree).
+      const cached = this.liveSchemaCache[connectionId];
+      if (!opts?.bypassCache && Array.isArray(cached) && cached.length > 0) return cached;
       // Real schema discovery against the user-supplied database.
       const data = await api<{ schemas: SchemaObject[] }>('/api/db/schemas', {
         host: conn.host,
@@ -197,8 +203,9 @@ export class DBEngine {
         password: conn.password,
         ssl: conn.ssl,
       });
-      this.liveSchemaCache[connectionId] = data.schemas || [];
-      return this.liveSchemaCache[connectionId];
+      const discovered = data.schemas || [];
+      if (discovered.length > 0) this.liveSchemaCache[connectionId] = discovered;
+      return discovered;
     }
 
     if (!this.schemaStore[connectionId]) {

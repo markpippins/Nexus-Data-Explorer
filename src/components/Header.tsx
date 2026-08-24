@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Database,
   Plus,
+  Pencil,
   Sparkles,
   Network,
   AlignLeft,
@@ -24,6 +25,7 @@ interface HeaderProps {
   connections: DBConnection[];
   activeConnection: DBConnection | null;
   onSelectConnection: (conn: DBConnection) => void;
+  onEditConnection: () => void;
   onOpenNewConnectionModal: () => void;
   onOpenNewTableModal: () => void;
   onOpenAiAssistant: () => void;
@@ -44,6 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
   connections,
   activeConnection,
   onSelectConnection,
+  onEditConnection,
   onOpenNewConnectionModal,
   onOpenNewTableModal,
   onOpenAiAssistant,
@@ -102,6 +105,15 @@ export const Header: React.FC<HeaderProps> = ({
             className="p-1 bg-[#2D3139] hover:bg-[#3B414D] text-[#94A3B8] hover:text-white rounded border border-[#3B414D] transition-colors text-xs"
           >
             <Plus className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            onClick={onEditConnection}
+            disabled={!activeConnection}
+            title="Edit Active Connection (host, user, password…)"
+            className="p-1 bg-[#2D3139] hover:bg-[#3B414D] text-[#94A3B8] hover:text-white rounded border border-[#3B414D] transition-colors text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Pencil className="w-3.5 h-3.5" />
           </button>
 
           <button

@@ -71,6 +71,7 @@ LIMIT 10;`,
 
   // Modals state
   const [isConnModalOpen, setIsConnModalOpen] = useState(false);
+  const [editingConnection, setEditingConnection] = useState<DBConnection | null>(null);
   const [isNewTableModalOpen, setIsNewTableModalOpen] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
@@ -164,12 +165,49 @@ LIMIT 10;`,
   const handleRefreshSchema = async () => {
     if (activeConnection) {
       try {
-        const reloaded = await DBEngine.getSchemas(activeConnection.id);
+        // bypassCache: Refresh must re-hit the live database, never replay a
+        // (possibly empty) cached discovery.
+        const reloaded = await DBEngine.getSchemas(activeConnection.id, { bypassCache: true });
         setSchemas([...reloaded]);
       } catch (err: any) {
         setSchemas([]);
+        setExecutionHistory((prev) => [
+          {
+            query: 'schema refresh',
+            columns: [],
+            rows: [],
+            rowCount: 0,
+            executionTimeMs: 0,
+            status: 'error',
+            error: `Schema refresh failed: ${err?.message || String(err)}`,
+            timestamp: new Date().toLocaleTimeString(),
+          },
+          ...prev.slice(0, 49),
+        ]);
       }
     }
+  };
+
+  // Edit the active connection (e.g. to set its password) in the modal.
+  const handleEditConnection = () => {
+    if (!activeConnection) return;
+    setEditingConnection(activeConnection);
+    setIsConnModalOpen(true);
+  };
+
+  // Save a connection from the modal: update in place when editing an existing
+  // connection id, otherwise add. Re-discovers schemas for the edited/new conn.
+  const handleSaveConnection = async (conn: DBConnection) => {
+    const existing = connections.find((c) => c.id === conn.id);
+    if (existing) {
+      DBEngine.updateConnection(conn);
+      setConnections((prev) => prev.map((c) => (c.id === conn.id ? conn : c)));
+      if (activeConnection?.id === conn.id) setActiveConnection(conn);
+    } else {
+      DBEngine.addConnection(conn);
+      setConnections((prev) => [...prev, conn]);
+    }
+    await handleSelectConnection(conn);
   };
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
@@ -382,13 +420,6 @@ LIMIT 10;`,
     handleNewQueryTab(ddl, `${type} ${objectData.name}`);
   };
 
-  // Save new connection from modal
-  const handleSaveConnection = async (newConn: DBConnection) => {
-    DBEngine.addConnection(newConn);
-    setConnections(DBEngine.getConnections());
-    await handleSelectConnection(newConn);
-  };
-
   // Save snippet
   const handleSaveSnippet = () => {
     if (!activeTab.query.trim()) return;
@@ -506,7 +537,8 @@ LIMIT 10;`,
         connections={connections}
         activeConnection={activeConnection}
         onSelectConnection={handleSelectConnection}
-        onOpenNewConnectionModal={() => setIsConnModalOpen(true)}
+        onEditConnection={handleEditConnection}
+        onOpenNewConnectionModal={() => { setEditingConnection(null); setIsConnModalOpen(true); }}
         onOpenNewTableModal={() => setIsNewTableModalOpen(true)}
         onOpenAiAssistant={() => setIsAiModalOpen(true)}
         onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
@@ -534,7 +566,7 @@ LIMIT 10;`,
           onSelectTable={handleOpenTableViewer}
           onOpenSavedQuery={(q) => handleNewQueryTab(q.query, q.title)}
           onOpenHistoryQuery={(qStr) => handleNewQueryTab(qStr, 'History Query')}
-          onOpenNewConnectionModal={() => setIsConnModalOpen(true)}
+          onOpenNewConnectionModal={() => { setEditingConnection(null); setIsConnModalOpen(true); }}
           onOpenNewTableModal={() => setIsNewTableModalOpen(true)}
           onRefreshSchema={handleRefreshSchema}
           onOpenEavStudio={(sName) => handleOpenEavStudio(sName)}
@@ -655,7 +687,11 @@ LIMIT 10;`,
       {/* Modals */}
       <ConnectionModal
         isOpen={isConnModalOpen}
-        onClose={() => setIsConnModalOpen(false)}
+        editing={editingConnection}
+        onClose={() => {
+          setIsConnModalOpen(false);
+          setEditingConnection(null);
+        }}
         onSaveConnection={handleSaveConnection}
       />
 
