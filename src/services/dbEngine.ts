@@ -14,6 +14,39 @@ import {
 
 const LOCAL_CONNECTIONS_KEY = 'data_workbench_connections';
 const LOCAL_SCHEMAS_PREFIX = 'data_workbench_schemas_';
+const LOCAL_SEEDED_KEY = 'data_workbench_seeded_defaults';
+
+// Default live connections seeded once on first run (or after a sample purge).
+// Credentials are intentionally NOT baked in — the user enters the password on
+// first connect and it persists only in their own localStorage.
+const DEFAULT_LIVE_CONNECTIONS: DBConnection[] = [
+  {
+    id: 'conn-local-nexus',
+    name: 'localhost (pgvector_db)',
+    engine: 'postgres',
+    host: 'localhost',
+    port: 5432,
+    database: 'nexus',
+    username: 'pguser',
+    ssl: false,
+    color: '#3b82f6', // Blue
+    status: 'disconnected',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'conn-barium-pg',
+    name: 'barium (192.168.1.212)',
+    engine: 'postgres',
+    host: '192.168.1.212',
+    port: 5432,
+    database: 'nexus',
+    username: 'pguser',
+    ssl: false,
+    color: '#10b981', // Emerald Green
+    status: 'disconnected',
+    createdAt: new Date().toISOString(),
+  },
+];
 
 // Environment-selected mode is authoritative: live by default; the in-browser
 // localStorage simulation runs only when VITE_DATA_EXPLORER_MODE=mock is set
@@ -48,17 +81,49 @@ export class DBEngine {
 
   public static initialize(): void {
     // Load user connections from localStorage. In live mode the app starts with
-    // NO connections — the user adds the real database, so sample connections
-    // can never be mistaken for live data. Mock mode keeps the sample set.
+    // NO sample connections — sample rows can never be mistaken for live data.
+    // Stale isSample entries persisted by pre-cutover builds are PURGED here,
+    // then the two default live connections (localhost, barium) are seeded once.
     const savedConns = localStorage.getItem(LOCAL_CONNECTIONS_KEY);
     if (savedConns) {
       try {
-        this.connections = JSON.parse(savedConns);
+        let parsed: DBConnection[] = JSON.parse(savedConns);
+        if (isLiveMode()) {
+          const purged = parsed.filter((c) => !c.isSample);
+          const seeded = !!localStorage.getItem(LOCAL_SEEDED_KEY);
+          let mutated = false;
+          if (!seeded && purged.length !== parsed.length) {
+            // First live run over stale mock-era state: purge samples, seed defaults.
+            this.connections = [...DEFAULT_LIVE_CONNECTIONS, ...purged];
+            localStorage.setItem(LOCAL_SEEDED_KEY, new Date().toISOString());
+            mutated = true;
+          } else {
+            this.connections = purged;
+            // One-time correction: the earliest seed used a wrong address for barium.
+            const staleBarium = this.connections.find(
+              (c) => c.id === 'conn-barium-pg' && c.host === '172.16.30.20'
+            );
+            if (staleBarium) {
+              staleBarium.host = '192.168.1.212';
+              staleBarium.name = 'barium (192.168.1.212)';
+              mutated = true;
+            }
+            if (purged.length !== parsed.length) mutated = true;
+          }
+          if (mutated) this.saveConnections();
+        } else {
+          this.connections = parsed;
+        }
       } catch {
         this.connections = [];
       }
     } else {
-      this.connections = isLiveMode() ? [] : [...INITIAL_CONNECTIONS];
+      if (isLiveMode()) {
+        this.connections = [...DEFAULT_LIVE_CONNECTIONS];
+        localStorage.setItem(LOCAL_SEEDED_KEY, new Date().toISOString());
+      } else {
+        this.connections = [...INITIAL_CONNECTIONS];
+      }
       this.saveConnections();
     }
 
