@@ -72,12 +72,21 @@ When writing SQL, output valid, optimized PostgreSQL queries. Wrap SQL in standa
   // upstream error) — never silently degraded.
   const DB_WORKBENCH_URL = process.env.DB_WORKBENCH_URL || 'http://localhost:3170';
 
+  // Security Pass Alpha (22fe12bc): draft-srv requires the fleet internal
+  // secret on every route except /api/health. This server-to-server proxy is
+  // exactly the trusted path — inject the header from the unit environment.
+  // The secret must never reach the browser; it stays in this process env.
+  const dbProxyHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (process.env.NEXUS_INTERNAL_SECRET) {
+    dbProxyHeaders['X-Nexus-Internal'] = process.env.NEXUS_INTERNAL_SECRET;
+  }
+
   app.use('/api/db', async (req, res) => {
     const started = Date.now();
     try {
       const upstream = await fetch(`${DB_WORKBENCH_URL}${req.originalUrl}`, {
         method: req.method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: dbProxyHeaders,
         body: req.method === 'GET' || req.method === 'HEAD' ? undefined : JSON.stringify(req.body ?? {}),
       });
       const text = await upstream.text();
