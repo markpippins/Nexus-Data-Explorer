@@ -10,59 +10,55 @@ import {
   Key,
   Search,
   Bookmark,
-  History,
   Plus,
   RefreshCw,
   Folder,
   FolderOpen,
-  CheckCircle2,
-  AlertCircle,
-  Boxes,
   X,
-  Layers,
-  Filter,
+  Boxes,
   Target,
-  GitCompare
+  GitCompare,
+  Loader2,
 } from 'lucide-react';
 import {
   DBConnection,
+  DatabaseNode,
   SchemaObject,
-  TableObject,
-  ViewObject,
-  TriggerObject,
-  StoredProcedureObject,
+  SavedQuery,
   ContextMenuState,
-  SavedQuery
 } from '../../types/database';
 
 interface TreeViewProps {
   activeConnection: DBConnection | null;
+  databases?: DatabaseNode[];
+  activeDatabase?: string | null;
+  databaseLoading?: boolean;
+  onSelectDatabase?: (databaseName: string) => void;
   schemas: SchemaObject[];
   savedQueries: SavedQuery[];
   history: string[];
   onContextMenu: (state: ContextMenuState) => void;
-  onSelectTable: (schemaName: string, tableName: string) => void;
+  onSelectTable: (schemaName: string, tableName: string, databaseName?: string) => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryQuery: (queryStr: string) => void;
   onOpenNewConnectionModal: () => void;
   onOpenNewTableModal: () => void;
   onRefreshSchema: () => void;
   onOpenEavStudio?: (schemaName?: string) => void;
-  onOpenQueryBuilder?: (schemaName?: string, tableName?: string) => void;
-  /** Currently active (unqualified-name resolution) schema. */
+  onOpenQueryBuilder?: (schemaName?: string, tableName?: string, databaseName?: string) => void;
   activeSchema?: string | null;
-  /** Switch the active schema. */
   onSetActiveSchema?: (schemaName: string) => void;
-  /** Open the schema-compare modal for two schemas. */
   onCompareSchemas?: (left: string, right?: string) => void;
-  /** Sidebar width in px (controlled — App persists it across sessions). */
   width?: number;
-  /** Live width updates while the user drags the resize handle. */
   onResize?: (width: number) => void;
 }
 
 export const TreeView: React.FC<TreeViewProps> = ({
   activeConnection,
+  databases = [],
+  activeDatabase,
+  databaseLoading = false,
+  onSelectDatabase,
   schemas,
   savedQueries,
   history,
@@ -83,14 +79,19 @@ export const TreeView: React.FC<TreeViewProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'tables' | 'views'>('all');
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
-    'schema-public': true,
-    'cat-public-tables': true,
-  });
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [resizing, setResizing] = useState(false);
+  const resizeStartRef = useRef({ x: 0, startWidth: 0 });
 
   const toggleNode = (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
+    e?.stopPropagation();
     setExpandedNodes((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleDatabaseClick = (databaseName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleNode(`database-${databaseName}`);
+    if (databaseName !== activeDatabase) onSelectDatabase?.(databaseName);
   };
 
   const handleRightClick = (
@@ -98,7 +99,8 @@ export const TreeView: React.FC<TreeViewProps> = ({
     type: ContextMenuState['type'],
     schemaName?: string,
     objectName?: string,
-    objectData?: any
+    objectData?: any,
+    databaseName?: string,
   ) => {
     e.preventDefault();
     e.stopPropagation();
@@ -108,118 +110,31 @@ export const TreeView: React.FC<TreeViewProps> = ({
       y: e.clientY,
       type,
       connectionId: activeConnection?.id,
+      databaseName,
       schemaName,
       objectName,
       objectData,
     });
   };
 
-  // Helper to highlight matching substrings in object names
-  const renderHighlightedText = (text: string, query: string) => {
-    const trimmed = query.trim();
-    if (!trimmed) return text;
-    const index = text.toLowerCase().indexOf(trimmed.toLowerCase());
-    if (index === -1) return text;
-    const before = text.substring(0, index);
-    const match = text.substring(index, index + trimmed.length);
-    const after = text.substring(index + trimmed.length);
-    return (
-      <>
-        {before}
-        <span className="bg-amber-500/30 text-amber-200 font-semibold px-0.5 rounded">
-          {match}
-        </span>
-        {after}
-      </>
-    );
+  const highlight = (text: string) => {
+    const term = searchTerm.trim();
+    if (!term) return text;
+    const index = text.toLowerCase().indexOf(term.toLowerCase());
+    if (index < 0) return text;
+    return <>{text.slice(0, index)}<span className="bg-amber-500/30 text-amber-200 font-semibold px-0.5 rounded">{text.slice(index, index + term.length)}</span>{text.slice(index + term.length)}</>;
   };
 
-  // Calculate filtered schemas dynamically as user types
-  const { filteredSchemas, totalMatchingTables, totalMatchingViews, hasAnyMatches, totalUnfilteredCount } = useMemo(() => {
+  const filteredSchemas = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    let matchTablesCount = 0;
-    let matchViewsCount = 0;
-    let totalAll = 0;
-
-    schemas.forEach((s) => {
-      totalAll += s.tables.length + (s.views?.length || 0);
-    });
-
-    if (!term && filterType === 'all') {
-      const allTables = schemas.reduce((acc, s) => acc + s.tables.length, 0);
-      const allViews = schemas.reduce((acc, s) => acc + (s.views?.length || 0), 0);
-      return {
-        filteredSchemas: schemas,
-        totalMatchingTables: allTables,
-        totalMatchingViews: allViews,
-        hasAnyMatches: allTables > 0 || allViews > 0,
-        totalUnfilteredCount: totalAll,
-      };
-    }
-
-    const filtered = schemas
-      .map((schema) => {
-        const schemaNameMatches = term ? schema.name.toLowerCase().includes(term) : true;
-
-        const matchingTables = (filterType === 'views' ? [] : schema.tables).filter(
-          (t) =>
-            !term ||
-            t.name.toLowerCase().includes(term) ||
-            t.columns.some((c) => c.name.toLowerCase().includes(term))
-        );
-
-        const matchingViews = (filterType === 'tables' ? [] : (schema.views || [])).filter(
-          (v) => !term || v.name.toLowerCase().includes(term)
-        );
-
-        const matchingTriggers = (term ? (schema.triggers || []).filter((tr) => tr.name.toLowerCase().includes(term)) : (schema.triggers || []));
-        const matchingProcedures = (term ? (schema.procedures || []).filter((p) => p.name.toLowerCase().includes(term)) : (schema.procedures || []));
-
-        matchTablesCount += matchingTables.length;
-        matchViewsCount += matchingViews.length;
-
-        if (schemaNameMatches && !term) {
-          return {
-            ...schema,
-            tables: matchingTables,
-            views: matchingViews,
-            triggers: matchingTriggers,
-            procedures: matchingProcedures,
-          };
-        }
-
-        return {
-          ...schema,
-          tables: matchingTables,
-          views: matchingViews,
-          triggers: matchingTriggers,
-          procedures: matchingProcedures,
-        };
-      })
-      .filter(
-        (schema) =>
-          schema.tables.length > 0 ||
-          schema.views.length > 0 ||
-          schema.triggers.length > 0 ||
-          schema.procedures.length > 0
-      );
-
-    return {
-      filteredSchemas: filtered,
-      totalMatchingTables: matchTablesCount,
-      totalMatchingViews: matchViewsCount,
-      hasAnyMatches: filtered.length > 0,
-      totalUnfilteredCount: totalAll,
-    };
+    return schemas.map((schema) => ({
+      ...schema,
+      tables: filterType === 'views' ? [] : schema.tables.filter((table) => !term || schema.name.toLowerCase().includes(term) || table.name.toLowerCase().includes(term) || table.columns.some((column) => column.name.toLowerCase().includes(term))),
+      views: filterType === 'tables' ? [] : (schema.views || []).filter((view) => !term || schema.name.toLowerCase().includes(term) || view.name.toLowerCase().includes(term)),
+      triggers: (schema.triggers || []).filter((trigger) => !term || schema.name.toLowerCase().includes(term) || trigger.name.toLowerCase().includes(term)),
+      procedures: (schema.procedures || []).filter((procedure) => !term || schema.name.toLowerCase().includes(term) || procedure.name.toLowerCase().includes(term)),
+    })).filter((schema) => !term || schema.tables.length > 0 || schema.views.length > 0 || schema.triggers.length > 0 || schema.procedures.length > 0);
   }, [schemas, searchTerm, filterType]);
-
-  const isFilteringActive = searchTerm.trim().length > 0 || filterType !== 'all';
-
-  // Drag-resize: mousedown arms the handle, mousemove over the document sets
-  // the live width (via onResize), mouseup disarms. Listeners attach while
-  // dragging only, so idle cost is zero.
-  const [resizing, setResizing] = useState(false);
-  const resizeStartRef = useRef({ x: 0, startWidth: 0 });
 
   const beginResize = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -229,11 +144,8 @@ export const TreeView: React.FC<TreeViewProps> = ({
 
   useEffect(() => {
     if (!resizing) return;
-    const MIN_W = 200;
-    const MAX_W = 560;
     const onMove = (e: MouseEvent) => {
-      const { x, startWidth } = resizeStartRef.current;
-      const next = Math.min(MAX_W, Math.max(MIN_W, startWidth + (e.clientX - x)));
+      const next = Math.min(560, Math.max(200, resizeStartRef.current.startWidth + e.clientX - resizeStartRef.current.x));
       onResize?.(next);
     };
     const onUp = () => setResizing(false);
@@ -245,519 +157,103 @@ export const TreeView: React.FC<TreeViewProps> = ({
     };
   }, [resizing, onResize]);
 
-  return (
-    <aside
-      style={{ width: `${width ?? 256}px` }}
-      className={`bg-[#181A1F] border-r border-[#2D3139] flex flex-col h-full select-none text-[#E2E8F0] font-sans shrink-0 relative ${resizing ? 'cursor-col-resize' : ''}`}
-    >
-      {/* Drag handle — 6px hit strip on the right edge, visible on hover */}
-      <div
-        onMouseDown={beginResize}
-        title="Drag to resize"
-        className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize transition-colors ${
-          resizing ? 'bg-blue-500/60' : 'hover:bg-blue-500/40'
-        }`}
-      />
-      {/* Search & Actions Header */}
-      <div className="p-3 border-b border-[#2D3139] space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#94A3B8] flex items-center space-x-1.5">
-            <Database className="w-3.5 h-3.5 text-blue-400" />
-            <span>Database Explorer</span>
-          </span>
-          <div className="flex items-center space-x-1">
-            <button
-              onClick={onOpenNewTableModal}
-              title="New Table DDL"
-              className="p-1 hover:bg-[#2D3139] text-[#94A3B8] hover:text-white rounded transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={onRefreshSchema}
-              title="Refresh Schema"
-              className="p-1 hover:bg-[#2D3139] text-[#94A3B8] hover:text-white rounded transition-colors cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
-          </div>
+  const renderSchema = (schema: SchemaObject, databaseName: string) => {
+    const schemaId = `schema-${databaseName}-${schema.name}`;
+    const schemaExpanded = searchTerm.trim() ? true : (expandedNodes[schemaId] ?? true);
+    const isActive = activeSchema === schema.name && activeDatabase === databaseName;
+    const isDefault = activeConnection?.database === databaseName && activeConnection.defaultSchema === schema.name;
+    const renderCategory = (kind: 'tables' | 'views' | 'triggers' | 'procedures', label: string, icon: React.ReactNode, items: any[]) => {
+      if (!items.length) return null;
+      const id = `${schemaId}-${kind}`;
+      const expanded = searchTerm.trim() ? true : (expandedNodes[id] ?? true);
+      return <div>
+        <div onClick={(e) => toggleNode(id, e)} className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139]/60 cursor-pointer text-[#94A3B8] text-[11px]">
+          {expanded ? <ChevronDown className="w-3 h-3 text-[#64748B]" /> : <ChevronRight className="w-3 h-3 text-[#64748B]" />}
+          {icon}<span>{label}</span><span className="text-[10px] text-[#64748B] ml-auto">{items.length}</span>
         </div>
-
-        {/* Dynamic Search Input Bar */}
-        <div className="space-y-1.5">
-          <div className="relative flex items-center">
-            <Search className={`w-3.5 h-3.5 absolute left-2.5 pointer-events-none transition-colors ${searchTerm ? 'text-blue-400' : 'text-[#64748B]'}`} />
-            <input
-              type="text"
-              id="treeview-search-input"
-              placeholder="Search tables, views..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  setSearchTerm('');
-                  (e.target as HTMLInputElement).blur();
-                }
-              }}
-              className="w-full bg-[#0F1115] border border-[#2D3139] rounded text-xs text-[#E2E8F0] pl-8 pr-7 py-1.5 focus:outline-none focus:border-blue-500 font-mono transition-colors placeholder:text-[#64748B]"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                title="Clear search (Esc)"
-                className="absolute right-2 p-0.5 text-[#64748B] hover:text-[#E2E8F0] hover:bg-[#2D3139] rounded cursor-pointer transition-colors"
+        {expanded && <div className="ml-3 pl-2 border-l border-[#2D3139] space-y-0.5 my-0.5">
+          {items.map((item) => {
+            const objectName = item.name;
+            const isTable = kind === 'tables';
+            const itemId = `${id}-${objectName}`;
+            const itemExpanded = isTable && (expandedNodes[itemId] || (!!searchTerm && item.columns.some((column: any) => column.name.toLowerCase().includes(searchTerm.toLowerCase()))));
+            return <div key={objectName}>
+              <div
+                onClick={(e) => isTable ? toggleNode(itemId, e) : undefined}
+                onDoubleClick={() => isTable && onSelectTable(schema.name, objectName, databaseName)}
+                onContextMenu={(e) => handleRightClick(e, kind === 'tables' ? 'table' : kind === 'views' ? 'view' : kind === 'triggers' ? 'trigger' : 'procedure', schema.name, objectName, item, databaseName)}
+                className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] text-xs group"
               >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Filter Type Pills and Match Indicator */}
-          <div className="flex items-center justify-between text-[10px] font-mono">
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={() => setFilterType('all')}
-                className={`px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
-                  filterType === 'all'
-                    ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40 font-semibold'
-                    : 'text-[#94A3B8] hover:text-white'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setFilterType('tables')}
-                className={`px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
-                  filterType === 'tables'
-                    ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40 font-semibold'
-                    : 'text-[#94A3B8] hover:text-white'
-                }`}
-              >
-                Tables
-              </button>
-              <button
-                onClick={() => setFilterType('views')}
-                className={`px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
-                  filterType === 'views'
-                    ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40 font-semibold'
-                    : 'text-[#94A3B8] hover:text-white'
-                }`}
-              >
-                Views
-              </button>
-            </div>
-
-            {isFilteringActive && (
-              <span className="text-[#94A3B8] truncate">
-                {totalMatchingTables + totalMatchingViews} match{totalMatchingTables + totalMatchingViews === 1 ? '' : 'es'}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Active Connection Banner */}
-      {activeConnection && (
-        <div className="px-3 py-1.5 bg-[#0F1115] border-b border-[#2D3139] flex items-center justify-between text-xs">
-          <div className="flex items-center space-x-2 truncate">
-            <div
-              className="w-2 h-2 rounded-full shrink-0"
-              style={{ backgroundColor: activeConnection.color }}
-            />
-            <span className="font-mono text-[11px] font-medium text-[#E2E8F0] truncate">
-              {activeConnection.database}
-            </span>
-            {activeSchema && (
-              <span
-                className="text-[10px] font-mono px-1.5 py-0.5 bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded truncate"
-                title="Active schema — unqualified queries resolve here"
-              >
-                {activeSchema}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
-            PostgreSQL
-          </span>
-        </div>
-      )}
-
-      {/* Tree Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-2 font-mono text-xs space-y-1">
-        {filteredSchemas.length === 0 && isFilteringActive ? (
-          <div className="py-8 px-3 text-center space-y-2">
-            <div className="w-8 h-8 rounded-full bg-[#2D3139] flex items-center justify-center mx-auto text-[#94A3B8]">
-              <Search className="w-4 h-4" />
-            </div>
-            <p className="text-xs text-[#E2E8F0] font-medium">No results found</p>
-            <p className="text-[11px] text-[#64748B] leading-relaxed">
-              No tables or views match <span className="text-amber-300 font-semibold">"{searchTerm}"</span>
-            </p>
-            <button
-              onClick={() => {
-                setSearchTerm('');
-                setFilterType('all');
-              }}
-              className="mt-2 px-2.5 py-1 bg-[#2D3139] hover:bg-[#3E4451] text-[#E2E8F0] rounded text-[11px] font-sans transition-colors cursor-pointer"
-            >
-              Clear filter
-            </button>
-          </div>
-        ) : (
-          filteredSchemas.map((schema) => {
-            const schemaId = `schema-${schema.name}`;
-            const isSchemaExpanded = isFilteringActive ? true : (expandedNodes[schemaId] ?? true);
-            const isActiveSchema = !!activeSchema && activeSchema === schema.name;
-            const isDefaultSchema = !!activeConnection?.defaultSchema && activeConnection.defaultSchema === schema.name;
-
-            return (
-              <div key={schema.name} className="text-xs">
-                {/* Schema Node */}
-                <div
-                  onClick={(e) => toggleNode(schemaId, e)}
-                  onContextMenu={(e) => handleRightClick(e, 'schema', schema.name)}
-                  className={`flex items-center space-x-1.5 px-2 py-1 rounded cursor-pointer text-[#E2E8F0] font-medium group ${
-                    isActiveSchema ? 'bg-blue-950/50 border border-blue-600/40' : 'hover:bg-[#2D3139]'
-                  }`}
-                >
-                  {isSchemaExpanded ? (
-                    <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8] shrink-0" />
-                  ) : (
-                    <ChevronRight className="w-3.5 h-3.5 text-[#94A3B8] shrink-0" />
-                  )}
-                  {isSchemaExpanded ? (
-                    <FolderOpen className={`w-3.5 h-3.5 shrink-0 ${isActiveSchema ? 'text-blue-400' : 'text-amber-400'}`} />
-                  ) : (
-                    <Folder className={`w-3.5 h-3.5 shrink-0 ${isActiveSchema ? 'text-blue-400' : 'text-amber-400'}`} />
-                  )}
-                  <span className="truncate">{renderHighlightedText(schema.name, searchTerm)}</span>
-                  {isActiveSchema && (
-                    <span
-                      title="Active schema — unqualified queries resolve here"
-                      className="px-1.5 py-0.2 text-[9px] bg-blue-600/30 text-blue-300 border border-blue-500/50 rounded font-semibold"
-                    >
-                      ACTIVE
-                    </span>
-                  )}
-                  {isDefaultSchema && !isActiveSchema && (
-                    <span
-                      title="Connection default schema (set in the connection dialog)"
-                      className="px-1.5 py-0.2 text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded font-mono"
-                    >
-                      default
-                    </span>
-                  )}
-                  {(schema.category === 'shrapnel' || schema.name === 'shrapnel') && (
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onOpenEavStudio) onOpenEavStudio(schema.name);
-                      }}
-                      title="Open EAV Studio"
-                      className="px-1.5 py-0.2 text-[9px] bg-purple-950/80 text-purple-300 border border-purple-700/50 rounded font-semibold ml-1 hover:bg-purple-900 transition-colors"
-                    >
-                      shrapnel
-                    </span>
-                  )}
-                  {onSetActiveSchema && !isActiveSchema && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSetActiveSchema(schema.name);
-                      }}
-                      title={`Set ${schema.name} as the active schema`}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-blue-900/60 text-blue-400 rounded transition-opacity cursor-pointer shrink-0"
-                    >
-                      <Target className="w-3 h-3" />
-                    </button>
-                  )}
-                  {onCompareSchemas && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCompareSchemas(schema.name);
-                      }}
-                      title={`Compare ${schema.name} with another schema`}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-purple-900/60 text-purple-400 rounded transition-opacity cursor-pointer shrink-0"
-                    >
-                      <GitCompare className="w-3 h-3" />
-                    </button>
-                  )}
-                  <span className="text-[10px] text-[#64748B] font-mono ml-auto">
-                    ({schema.tables.length})
-                  </span>
-                </div>
-
-                {/* Schema Children */}
-                {isSchemaExpanded && (
-                  <div className="ml-3 pl-2 border-l border-[#2D3139] space-y-1 my-0.5">
-                    {/* TABLES CATEGORY */}
-                    {schema.tables.length > 0 && (
-                      <div>
-                        <div
-                          onClick={(e) => toggleNode(`cat-${schema.name}-tables`, e)}
-                          className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139]/60 cursor-pointer text-[#94A3B8] font-mono text-[11px]"
-                        >
-                          {(isFilteringActive || expandedNodes[`cat-${schema.name}-tables`]) ? (
-                            <ChevronDown className="w-3 h-3 text-[#64748B]" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3 text-[#64748B]" />
-                          )}
-                          <TableIcon className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>Tables</span>
-                          <span className="text-[10px] text-[#64748B] font-mono ml-auto">
-                            {schema.tables.length}
-                          </span>
-                        </div>
-
-                        {(isFilteringActive || expandedNodes[`cat-${schema.name}-tables`]) && (
-                          <div className="ml-3 pl-2 border-l border-[#2D3139] space-y-0.5 my-0.5">
-                            {schema.tables.map((table) => {
-                              const tableId = `tbl-${schema.name}-${table.name}`;
-                              const term = searchTerm.trim().toLowerCase();
-                              const hasMatchingColumns = term && !table.name.toLowerCase().includes(term) &&
-                                table.columns.some((c) => c.name.toLowerCase().includes(term));
-                              const isTableExpanded = expandedNodes[tableId] || (isFilteringActive && hasMatchingColumns);
-
-                              return (
-                                <div key={table.name}>
-                                  <div
-                                    onClick={(e) => toggleNode(tableId, e)}
-                                    onDoubleClick={() => onSelectTable(schema.name, table.name)}
-                                    onContextMenu={(e) =>
-                                      handleRightClick(e, 'table', schema.name, table.name, table)
-                                    }
-                                    title="Double-click to open data grid"
-                                    className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-mono group transition-colors"
-                                  >
-                                    {isTableExpanded ? (
-                                      <ChevronDown className="w-3 h-3 text-[#64748B]" />
-                                    ) : (
-                                      <ChevronRight className="w-3 h-3 text-[#64748B]" />
-                                    )}
-                                    <TableIcon className="w-3.5 h-3.5 text-[#9CA3AF] shrink-0 group-hover:text-cyan-300" />
-                                    <span className="truncate group-hover:text-white">
-                                      {renderHighlightedText(table.name, searchTerm)}
-                                    </span>
-                                    {onOpenQueryBuilder && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onOpenQueryBuilder(schema.name, table.name);
-                                        }}
-                                        title="Open in Visual Query Builder"
-                                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-blue-900/60 text-blue-400 rounded transition-opacity cursor-pointer"
-                                      >
-                                        <Boxes className="w-3 h-3" />
-                                      </button>
-                                    )}
-                                    <span className="text-[10px] text-[#64748B] font-mono ml-auto">
-                                      {table.rowCount}
-                                    </span>
-                                  </div>
-
-                                  {/* Table Columns Expandable */}
-                                  {isTableExpanded && (
-                                    <div className="ml-4 pl-2 border-l border-[#2D3139]/60 space-y-0.5 my-0.5">
-                                      {table.columns.map((col) => {
-                                        const isColMatch = term && col.name.toLowerCase().includes(term);
-                                        return (
-                                          <div
-                                            key={col.name}
-                                            className={`flex items-center space-x-1.5 px-2 py-0.5 text-[11px] font-mono rounded ${
-                                              isColMatch
-                                                ? 'bg-amber-500/10 text-amber-200'
-                                                : 'text-[#94A3B8] hover:text-[#E2E8F0]'
-                                            }`}
-                                          >
-                                            {col.isPrimaryKey ? (
-                                              <Key className="w-3 h-3 text-amber-400 shrink-0" />
-                                            ) : col.isForeignKey ? (
-                                              <Key className="w-3 h-3 text-blue-400 shrink-0" />
-                                            ) : (
-                                              <span className="w-3 h-3 rounded bg-[#2D3139] text-[9px] text-[#94A3B8] flex items-center justify-center font-bold">
-                                                #
-                                              </span>
-                                            )}
-                                            <span className="truncate">
-                                              {renderHighlightedText(col.name, searchTerm)}
-                                            </span>
-                                            <span className="text-[9px] text-[#64748B] ml-auto font-mono truncate">
-                                              {col.type}
-                                            </span>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* VIEWS CATEGORY */}
-                    {schema.views.length > 0 && (
-                      <div>
-                        <div
-                          onClick={(e) => toggleNode(`cat-${schema.name}-views`, e)}
-                          className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139]/60 cursor-pointer text-[#94A3B8] font-mono text-[11px]"
-                        >
-                          {(isFilteringActive || expandedNodes[`cat-${schema.name}-views`]) ? (
-                            <ChevronDown className="w-3 h-3 text-[#64748B]" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3 text-[#64748B]" />
-                          )}
-                          <Eye className="w-3.5 h-3.5 text-indigo-400" />
-                          <span>Views</span>
-                          <span className="text-[10px] text-[#64748B] font-mono ml-auto">
-                            {schema.views.length}
-                          </span>
-                        </div>
-
-                        {(isFilteringActive || expandedNodes[`cat-${schema.name}-views`]) && (
-                          <div className="ml-3 pl-2 border-l border-[#2D3139] space-y-0.5 my-0.5">
-                            {schema.views.map((view) => (
-                              <div
-                                key={view.name}
-                                onDoubleClick={() => onSelectTable(schema.name, view.name)}
-                                onContextMenu={(e) =>
-                                  handleRightClick(e, 'view', schema.name, view.name, view)
-                                }
-                                className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-mono text-xs group"
-                              >
-                                <Eye className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                                <span className="truncate group-hover:text-white">
-                                  {renderHighlightedText(view.name, searchTerm)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* TRIGGERS CATEGORY */}
-                    {schema.triggers.length > 0 && (
-                      <div>
-                        <div
-                          onClick={(e) => toggleNode(`cat-${schema.name}-triggers`, e)}
-                          className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139]/60 cursor-pointer text-[#94A3B8] font-mono text-[11px]"
-                        >
-                          {(isFilteringActive || expandedNodes[`cat-${schema.name}-triggers`]) ? (
-                            <ChevronDown className="w-3 h-3 text-[#64748B]" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3 text-[#64748B]" />
-                          )}
-                          <Zap className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Triggers</span>
-                          <span className="text-[10px] text-[#64748B] font-mono ml-auto">
-                            {schema.triggers.length}
-                          </span>
-                        </div>
-
-                        {(isFilteringActive || expandedNodes[`cat-${schema.name}-triggers`]) && (
-                          <div className="ml-3 pl-2 border-l border-[#2D3139] space-y-0.5 my-0.5">
-                            {schema.triggers.map((trg) => (
-                              <div
-                                key={trg.name}
-                                onContextMenu={(e) =>
-                                  handleRightClick(e, 'trigger', schema.name, trg.name, trg)
-                                }
-                                className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-mono text-xs group"
-                              >
-                                <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                <span className="truncate group-hover:text-white">
-                                  {renderHighlightedText(trg.name, searchTerm)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* PROCEDURES CATEGORY */}
-                    {schema.procedures.length > 0 && (
-                      <div>
-                        <div
-                          onClick={(e) => toggleNode(`cat-${schema.name}-procedures`, e)}
-                          className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139]/60 cursor-pointer text-[#94A3B8] font-mono text-[11px]"
-                        >
-                          {(isFilteringActive || expandedNodes[`cat-${schema.name}-procedures`]) ? (
-                            <ChevronDown className="w-3 h-3 text-[#64748B]" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3 text-[#64748B]" />
-                          )}
-                          <Code className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Procedures</span>
-                          <span className="text-[10px] text-[#64748B] font-mono ml-auto">
-                            {schema.procedures.length}
-                          </span>
-                        </div>
-
-                        {(isFilteringActive || expandedNodes[`cat-${schema.name}-procedures`]) && (
-                          <div className="ml-3 pl-2 border-l border-[#2D3139] space-y-0.5 my-0.5">
-                            {schema.procedures.map((proc) => (
-                              <div
-                                key={proc.name}
-                                onContextMenu={(e) =>
-                                  handleRightClick(e, 'procedure', schema.name, proc.name, proc)
-                                }
-                                className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-mono text-xs group"
-                              >
-                                <Code className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                <span className="truncate group-hover:text-white">
-                                  {renderHighlightedText(proc.name, searchTerm)}()
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {isTable && (itemExpanded ? <ChevronDown className="w-3 h-3 text-[#64748B]" /> : <ChevronRight className="w-3 h-3 text-[#64748B]" />)}
+                {kind === 'tables' ? <TableIcon className="w-3.5 h-3.5 text-[#9CA3AF] group-hover:text-cyan-300 shrink-0" /> : icon}
+                <span className="truncate group-hover:text-white">{highlight(objectName)}{kind === 'procedures' ? '()' : ''}</span>
+                {isTable && onOpenQueryBuilder && <button onClick={(e) => { e.stopPropagation(); onOpenQueryBuilder(schema.name, objectName); }} title="Open in Visual Query Builder" className="opacity-0 group-hover:opacity-100 p-0.5 text-blue-400 rounded shrink-0"><Boxes className="w-3 h-3" /></button>}
+                {isTable && <span className="text-[10px] text-[#64748B] ml-auto">{item.rowCount}</span>}
               </div>
-            );
-          })
-        )}
-      </div>
+              {itemExpanded && isTable && <div className="ml-4 pl-2 border-l border-[#2D3139]/60 space-y-0.5">
+                {item.columns.map((column: any) => <div key={column.name} className="flex items-center space-x-1.5 px-2 py-0.5 text-[11px] text-[#94A3B8] rounded">
+                  {column.isPrimaryKey || column.isForeignKey ? <Key className={`w-3 h-3 shrink-0 ${column.isPrimaryKey ? 'text-amber-400' : 'text-blue-400'}`} /> : <span className="w-3 h-3 rounded bg-[#2D3139] text-[9px] flex items-center justify-center">#</span>}
+                  <span className="truncate">{highlight(column.name)}</span><span className="text-[9px] text-[#64748B] ml-auto truncate">{column.type}</span>
+                </div>)}
+              </div>}
+            </div>;
+          })}
+        </div>}
+      </div>;
+    };
 
-      {/* Bookmarks & Saved Snippets Footer Drawer */}
-      <div className="p-2 border-t border-[#2D3139] bg-[#0F1115] text-xs">
-        <div
-          onClick={(e) => toggleNode('drawer-saved', e)}
-          className="flex items-center justify-between font-mono text-[#94A3B8] cursor-pointer p-1 rounded hover:bg-[#181A1F]"
-        >
-          <div className="flex items-center space-x-1.5">
-            <Bookmark className="w-3.5 h-3.5 text-amber-400" />
-            <span className="font-semibold text-[11px]">Saved Snippets</span>
-          </div>
-          <span className="text-[10px] text-[#64748B] font-mono">({savedQueries.length})</span>
-        </div>
-
-        {expandedNodes['drawer-saved'] && (
-          <div className="mt-1 space-y-1 max-h-28 overflow-y-auto custom-scrollbar pr-1">
-            {savedQueries.length === 0 ? (
-              <p className="text-[11px] text-[#64748B] italic p-1">No saved snippets yet.</p>
-            ) : (
-              savedQueries.map((q) => (
-                <div
-                  key={q.id}
-                  onClick={() => onOpenSavedQuery(q)}
-                  className="p-1.5 bg-[#181A1F] hover:bg-[#2D3139] border border-[#2D3139] rounded cursor-pointer truncate font-mono text-[11px] text-[#E2E8F0] transition-colors flex items-center justify-between"
-                >
-                  <span className="truncate">{q.title}</span>
-                  <ChevronRight className="w-3 h-3 text-[#64748B] shrink-0" />
-                </div>
-              ))
-            )}
-          </div>
-        )}
+    return <div key={`${databaseName}-${schema.name}`} className="text-xs">
+      <div onClick={(e) => toggleNode(schemaId, e)} onContextMenu={(e) => handleRightClick(e, 'schema', schema.name, undefined, undefined, databaseName)} className={`flex items-center space-x-1.5 px-2 py-1 rounded cursor-pointer font-medium group ${isActive ? 'bg-blue-950/50 border border-blue-600/40 text-[#E2E8F0]' : 'hover:bg-[#2D3139] text-[#E2E8F0]'}`}>
+        {schemaExpanded ? <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" /> : <ChevronRight className="w-3.5 h-3.5 text-[#94A3B8]" />}
+        {schemaExpanded ? <FolderOpen className={`w-3.5 h-3.5 ${isActive ? 'text-blue-400' : 'text-amber-400'}`} /> : <Folder className={`w-3.5 h-3.5 ${isActive ? 'text-blue-400' : 'text-amber-400'}`} />}
+        <span className="truncate">{highlight(schema.name)}</span>
+        {isActive && <span className="px-1.5 py-0.2 text-[9px] bg-blue-600/30 text-blue-300 border border-blue-500/50 rounded font-semibold">ACTIVE</span>}
+        {isDefault && !isActive && <span className="px-1.5 py-0.2 text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded">default</span>}
+        {(schema.category === 'shrapnel' || schema.name === 'shrapnel') && <button onClick={(e) => { e.stopPropagation(); onOpenEavStudio?.(schema.name); }} className="px-1.5 py-0.2 text-[9px] bg-purple-950/80 text-purple-300 border border-purple-700/50 rounded font-semibold">shrapnel</button>}
+        {onSetActiveSchema && !isActive && <button onClick={(e) => { e.stopPropagation(); onSetActiveSchema(schema.name); }} title="Set active schema" className="opacity-0 group-hover:opacity-100 p-0.5 text-blue-400 rounded shrink-0"><Target className="w-3 h-3" /></button>}
+        {onCompareSchemas && <button onClick={(e) => { e.stopPropagation(); onCompareSchemas(schema.name); }} title="Compare schema" className="opacity-0 group-hover:opacity-100 p-0.5 text-purple-400 rounded shrink-0"><GitCompare className="w-3 h-3" /></button>}
+        <span className="text-[10px] text-[#64748B] ml-auto">({schema.tables.length})</span>
       </div>
-    </aside>
-  );
+      {schemaExpanded && <div className="ml-3 pl-2 border-l border-[#2D3139] space-y-1 my-0.5">
+        {renderCategory('tables', 'Tables', <TableIcon className="w-3.5 h-3.5 text-cyan-400" />, schema.tables)}
+        {renderCategory('views', 'Views', <Eye className="w-3.5 h-3.5 text-indigo-400" />, schema.views || [])}
+        {renderCategory('triggers', 'Triggers', <Zap className="w-3.5 h-3.5 text-amber-400" />, schema.triggers || [])}
+        {renderCategory('procedures', 'Procedures', <Code className="w-3.5 h-3.5 text-emerald-400" />, schema.procedures || [])}
+      </div>}
+    </div>;
+  };
+
+  return <aside style={{ width: `${width ?? 256}px` }} className={`bg-[#181A1F] border-r border-[#2D3139] flex flex-col h-full select-none text-[#E2E8F0] font-sans shrink-0 relative ${resizing ? 'cursor-col-resize' : ''}`}>
+    <div onMouseDown={beginResize} title="Drag to resize" className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize z-10 ${resizing ? 'bg-blue-500/60' : 'hover:bg-blue-500/40'}`} />
+    <div className="p-3 border-b border-[#2D3139] space-y-2">
+      <div className="flex items-center justify-between"><span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#94A3B8] flex items-center space-x-1.5"><Database className="w-3.5 h-3.5 text-blue-400" /><span>Database Explorer</span></span><div className="flex items-center space-x-1"><button onClick={onOpenNewTableModal} title="New Table DDL" className="p-1 hover:bg-[#2D3139] text-[#94A3B8] rounded"><Plus className="w-3.5 h-3.5" /></button><button onClick={onRefreshSchema} title="Refresh database" className="p-1 hover:bg-[#2D3139] text-[#94A3B8] rounded"><RefreshCw className="w-3.5 h-3.5" /></button></div></div>
+      <div className="relative"><Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-[#64748B]" /><input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setSearchTerm('')} placeholder="Search schemas, tables, views..." className="w-full bg-[#0F1115] border border-[#2D3139] rounded text-xs pl-8 pr-7 py-1.5 focus:outline-none focus:border-blue-500 placeholder:text-[#64748B]" />{searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1.5 text-[#64748B]"><X className="w-3.5 h-3.5" /></button>}</div>
+      <div className="flex items-center space-x-1 text-[10px] font-mono"><button onClick={() => setFilterType('all')} className={`px-1.5 py-0.5 rounded ${filterType === 'all' ? 'bg-blue-600/30 text-blue-300' : 'text-[#94A3B8]'}`}>All</button><button onClick={() => setFilterType('tables')} className={`px-1.5 py-0.5 rounded ${filterType === 'tables' ? 'bg-blue-600/30 text-blue-300' : 'text-[#94A3B8]'}`}>Tables</button><button onClick={() => setFilterType('views')} className={`px-1.5 py-0.5 rounded ${filterType === 'views' ? 'bg-blue-600/30 text-blue-300' : 'text-[#94A3B8]'}`}>Views</button></div>
+    </div>
+    {activeConnection && <div className="px-3 py-1.5 bg-[#0F1115] border-b border-[#2D3139] flex items-center justify-between text-xs"><div className="flex items-center space-x-2 truncate"><div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: activeConnection.color }} /><span className="font-mono text-[11px] truncate">{activeConnection.name}</span>{activeDatabase && <span className="text-[10px] font-mono px-1.5 py-0.5 bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 rounded truncate">{activeDatabase}</span>}{activeSchema && <span className="text-[10px] font-mono px-1.5 py-0.5 bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded truncate">{activeSchema}</span>}</div><span className="text-[10px] font-mono px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">{activeConnection.engine}</span></div>}
+    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 font-mono text-xs space-y-1">
+      {databaseLoading && <div className="flex items-center justify-center space-x-2 py-4 text-[#94A3B8] text-[11px]"><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Loading database catalog…</span></div>}
+      {!databaseLoading && databases.length === 0 && <div className="py-8 px-3 text-center text-[#64748B] text-[11px]">No databases discovered.</div>}
+      {!databaseLoading && databases.map((database) => {
+        const databaseId = `database-${database.name}`;
+        const expanded = expandedNodes[databaseId] ?? database.name === activeDatabase;
+        const isActiveDatabase = database.name === activeDatabase;
+        const visibleSchemas = isActiveDatabase ? filteredSchemas : (database.schemas || []);
+        return <div key={database.name}>
+          <div onClick={(e) => handleDatabaseClick(database.name, e)} onContextMenu={(e) => handleRightClick(e, 'connection', undefined, undefined, undefined, database.name)} className={`flex items-center space-x-1.5 px-2 py-1 rounded cursor-pointer font-semibold ${isActiveDatabase ? 'bg-cyan-950/40 border border-cyan-700/40 text-cyan-100' : 'hover:bg-[#2D3139] text-[#E2E8F0]'}`}>
+            {expanded ? <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" /> : <ChevronRight className="w-3.5 h-3.5 text-[#94A3B8]" />}
+            <Database className={`w-3.5 h-3.5 ${isActiveDatabase ? 'text-cyan-300' : 'text-blue-400'}`} /><span className="truncate">{database.name}</span>
+            {database.isTemplate && <span className="text-[9px] text-[#64748B]">template</span>}
+            {database.error && <span title={database.error} className="text-rose-400">!</span>}
+            {database.schemasLoaded && <span className="text-[10px] text-[#64748B] ml-auto">{visibleSchemas.length} schemas</span>}
+          </div>
+          {expanded && <div className="ml-3 pl-2 border-l border-cyan-900/40 space-y-1 my-0.5">
+            {isActiveDatabase && visibleSchemas.length === 0 && <div className="px-2 py-2 text-[11px] text-[#64748B]">{searchTerm ? 'No matching objects.' : 'No schemas found.'}</div>}
+            {visibleSchemas.map((schema) => renderSchema(schema, database.name))}
+          </div>}
+        </div>;
+      })}
+    </div>
+    <div className="p-2 border-t border-[#2D3139] bg-[#0F1115] text-xs"><div onClick={(e) => toggleNode('drawer-saved', e)} className="flex items-center justify-between font-mono text-[#94A3B8] cursor-pointer p-1 rounded hover:bg-[#181A1F]"><div className="flex items-center space-x-1.5"><Bookmark className="w-3.5 h-3.5 text-amber-400" /><span className="font-semibold text-[11px]">Saved Snippets</span></div><span className="text-[10px]">({savedQueries.length})</span></div>{expandedNodes['drawer-saved'] && <div className="mt-1 space-y-1 max-h-28 overflow-y-auto"><>{savedQueries.map((query) => <div key={query.id} onClick={() => onOpenSavedQuery(query)} className="p-1.5 bg-[#181A1F] hover:bg-[#2D3139] rounded cursor-pointer truncate text-[11px] flex items-center justify-between"><span className="truncate">{query.title}</span><ChevronRight className="w-3 h-3 text-[#64748B]" /></div>)}</></div>}</div>
+  </aside>;
 };

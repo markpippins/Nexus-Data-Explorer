@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   DBConnection,
+  DatabaseNode,
   SchemaObject,
   QueryTab,
   QueryExecutionResult,
@@ -42,6 +43,9 @@ export default function App() {
 
   const [connections, setConnections] = useState<DBConnection[]>([]);
   const [activeConnection, setActiveConnection] = useState<DBConnection | null>(null);
+  const [databases, setDatabases] = useState<DatabaseNode[]>([]);
+  const [activeDatabase, setActiveDatabase] = useState<string | null>(null);
+  const [databaseLoading, setDatabaseLoading] = useState(false);
   const [schemas, setSchemas] = useState<SchemaObject[]>([]);
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
   const [executionHistory, setExecutionHistory] = useState<QueryExecutionResult[]>([]);
@@ -93,7 +97,7 @@ LIMIT 10;`,
   // active one, require typed confirmation naming the object exactly.
   const [dropGuard, setDropGuard] = useState<{
     open: boolean;
-    target: { type: string; schemaName: string; objectName: string } | null;
+    target: { type: string; schemaName: string; objectName: string; databaseName?: string } | null;
     confirmedText: string;
   }>({ open: false, target: null, confirmedText: '' });
 
@@ -140,10 +144,22 @@ LIMIT 10;`,
         // Restore the persisted active schema immediately (optimistic — no
         // flash of the default while discovery runs), then reconcile below
         // once the discovered set is known.
-        const persisted = DBEngine.getActiveSchema(active.id);
+        const persisted = DBEngine.getActiveSchema(active.id, active.database);
         if (persisted) setActiveSchema(persisted);
         try {
-          const loadedSchemas = await DBEngine.getSchemas(active.id);
+          const discoveredDatabases = await DBEngine.getDatabases(active.id);
+          setDatabases(discoveredDatabases);
+          const initialDatabase =
+            discoveredDatabases.find((database) => database.name === active.database)?.name ||
+            discoveredDatabases[0]?.name ||
+            active.database;
+          setActiveDatabase(initialDatabase);
+          const loadedSchemas = await DBEngine.getSchemas(active.id, initialDatabase);
+          setDatabases(discoveredDatabases.map((database) =>
+            database.name === initialDatabase
+              ? { ...database, schemas: loadedSchemas, schemasLoaded: true }
+              : database
+          ));
           setSchemas(loadedSchemas);
           if (persisted && loadedSchemas.some((s) => s.name === persisted)) {
             setActiveSchema(persisted);
@@ -152,12 +168,12 @@ LIMIT 10;`,
             // longer exists (dropped/renamed since last session): fall back
             // to connection default → public → first, and persist the result.
             const seed =
-              (active.defaultSchema && loadedSchemas.find((s) => s.name === active.defaultSchema)?.name) ||
+          (initialDatabase === active.database && active.defaultSchema && loadedSchemas.find((s) => s.name === active.defaultSchema)?.name) ||
               loadedSchemas.find((s) => s.name === 'public')?.name ||
               loadedSchemas[0]?.name ||
               null;
             setActiveSchema(seed);
-            DBEngine.setActiveSchema(active.id, seed);
+            DBEngine.setActiveSchema(active.id, seed, initialDatabase);
           }
         } catch (err: any) {
           setSchemas([]);
@@ -196,59 +212,100 @@ LIMIT 10;`,
   // Handle switching active connection
   const handleSelectConnection = async (conn: DBConnection) => {
     setActiveConnection(conn);
-    // Optimistically restore this connection's persisted active schema.
-    const persisted = DBEngine.getActiveSchema(conn.id);
-    if (persisted) setActiveSchema(persisted);
+    setDatabaseLoading(true);
     try {
-      const loadedSchemas = await DBEngine.getSchemas(conn.id);
+      const discoveredDatabases = await DBEngine.getDatabases(conn.id, { bypassCache: true });
+      setDatabases(discoveredDatabases);
+      const databaseName =
+        discoveredDatabases.find((database) => database.name === conn.database)?.name ||
+        discoveredDatabases[0]?.name ||
+        conn.database;
+      setActiveDatabase(databaseName);
+      const persisted = DBEngine.getActiveSchema(conn.id, databaseName);
+      if (persisted) setActiveSchema(persisted);
+      const loadedSchemas = await DBEngine.getSchemas(conn.id, databaseName);
       setSchemas(loadedSchemas);
       if (persisted && loadedSchemas.some((s) => s.name === persisted)) {
         setActiveSchema(persisted);
       } else {
         const seed =
-          (conn.defaultSchema && loadedSchemas.find((s) => s.name === conn.defaultSchema)?.name) ||
+          (databaseName === conn.database && conn.defaultSchema && loadedSchemas.find((s) => s.name === conn.defaultSchema)?.name) ||
           loadedSchemas.find((s) => s.name === 'public')?.name ||
           loadedSchemas[0]?.name ||
           null;
         setActiveSchema(seed);
-        DBEngine.setActiveSchema(conn.id, seed);
+        DBEngine.setActiveSchema(conn.id, seed, databaseName);
       }
     } catch (err: any) {
+      setDatabases([]);
       setSchemas([]);
       setExecutionHistory((prev) => [
         {
-          query: 'schema discovery',
-          columns: [],
-          rows: [],
-          rowCount: 0,
-          executionTimeMs: 0,
-          status: 'error',
-          error: `Failed to load schema from the live database: ${err?.message || String(err)}`,
+          query: 'database/schema discovery',
+          columns: [], rows: [], rowCount: 0, executionTimeMs: 0, status: 'error',
+          error: `Failed to load databases from the live database: ${err?.message || String(err)}`,
           timestamp: new Date().toLocaleTimeString(),
         },
         ...prev.slice(0, 49),
       ]);
+    } finally {
+      setDatabaseLoading(false);
     }
   };
 
-  // Refresh current schema
+  // Handle switching the database node beneath the active server connection.
+  const handleSelectDatabase = async (databaseName: string) => {
+    if (!activeConnection || databaseName === activeDatabase) return;
+    setActiveDatabase(databaseName);
+    setDatabaseLoading(true);
+    try {
+      const loadedSchemas = await DBEngine.getSchemas(activeConnection.id, databaseName);
+      setDatabases((prev) => prev.map((database) =>
+        database.name === databaseName
+          ? { ...database, schemas: loadedSchemas, schemasLoaded: true, loading: false, error: undefined }
+          : database
+      ));
+      setSchemas(loadedSchemas);
+      const persisted = DBEngine.getActiveSchema(activeConnection.id, databaseName);
+      const seed =
+        (databaseName === activeConnection.database && activeConnection.defaultSchema && loadedSchemas.find((s) => s.name === activeConnection.defaultSchema)?.name) ||
+        (persisted && loadedSchemas.find((s) => s.name === persisted)?.name) ||
+        loadedSchemas.find((s) => s.name === 'public')?.name ||
+        loadedSchemas[0]?.name ||
+        null;
+      setActiveSchema(seed);
+      DBEngine.setActiveSchema(activeConnection.id, seed, databaseName);
+      setTabs((prev) => prev.map((tab) => tab.connectionId === activeConnection.id ? { ...tab, databaseName } : tab));
+    } catch (err: any) {
+      setSchemas([]);
+      setExecutionHistory((prev) => [{
+        query: `schema discovery (${databaseName})`, columns: [], rows: [], rowCount: 0,
+        executionTimeMs: 0, status: 'error',
+        error: `Failed to load schemas for ${databaseName}: ${err?.message || String(err)}`,
+        timestamp: new Date().toLocaleTimeString(),
+      }, ...prev.slice(0, 49)]);
+    } finally {
+      setDatabaseLoading(false);
+    }
+  };
+
+  // Refresh current database schema
   const handleRefreshSchema = async () => {
     if (activeConnection) {
       try {
-        // bypassCache: Refresh must re-hit the live database, never replay a
-        // (possibly empty) cached discovery.
-        const reloaded = await DBEngine.getSchemas(activeConnection.id, { bypassCache: true });
+        const databaseName = activeDatabase || activeConnection.database;
+        const reloaded = await DBEngine.getSchemas(activeConnection.id, databaseName, { bypassCache: true });
         setSchemas([...reloaded]);
         // Reconcile: if the persisted/active schema was dropped or renamed on
         // the server since the last discovery, fall back and re-persist.
         setActiveSchema((current) => {
           if (current && reloaded.some((s) => s.name === current)) return current;
           const seed =
-            (activeConnection.defaultSchema && reloaded.find((s) => s.name === activeConnection.defaultSchema)?.name) ||
+            (databaseName === activeConnection.database && activeConnection.defaultSchema && reloaded.find((s) => s.name === activeConnection.defaultSchema)?.name) ||
             reloaded.find((s) => s.name === 'public')?.name ||
             reloaded[0]?.name ||
             null;
-          DBEngine.setActiveSchema(activeConnection.id, seed);
+          DBEngine.setActiveSchema(activeConnection.id, seed, databaseName);
           return seed;
         });
       } catch (err: any) {
@@ -332,9 +389,9 @@ LIMIT 10;`,
   };
 
   // Open Data Grid Tab on double-clicking table
-  const handleOpenTableViewer = (schemaName: string, tableName: string) => {
+  const handleOpenTableViewer = (schemaName: string, tableName: string, databaseName = activeDatabase || activeConnection?.database || '') => {
     const existing = tabs.find(
-      (t) => t.type === 'table-viewer' && t.schema === schemaName && t.tableName === tableName
+      (t) => t.type === 'table-viewer' && t.databaseName === databaseName && t.schema === schemaName && t.tableName === tableName
     );
     if (existing) {
       setActiveTabId(existing.id);
@@ -348,6 +405,7 @@ LIMIT 10;`,
       type: 'table-viewer',
       query: `SELECT * FROM ${schemaName}.${tableName};`,
       connectionId: activeConnection?.id || '',
+      databaseName,
       schema: schemaName,
       tableName: tableName,
     };
@@ -402,7 +460,7 @@ LIMIT 10;`,
   };
 
   // Open Visual Query Builder Tab
-  const handleOpenQueryBuilder = (schemaName?: string, tableName?: string) => {
+  const handleOpenQueryBuilder = (schemaName?: string, tableName?: string, databaseName = activeDatabase || activeConnection?.database || '') => {
     const targetSchema = schemaName || schemas[0]?.name || 'public';
     const targetTable = tableName || (schemas.find((s) => s.name === targetSchema)?.tables[0]?.name || 'customers');
     const existing = tabs.find((t) => t.type === 'query-builder');
@@ -413,7 +471,7 @@ LIMIT 10;`,
             ? {
                 ...t,
                 schema: targetSchema,
-                tableName: targetTable,
+                databaseName,
                 title: `Query Builder: ${targetTable}`,
               }
             : t
@@ -430,6 +488,7 @@ LIMIT 10;`,
       type: 'query-builder',
       query: '',
       connectionId: activeConnection?.id || '',
+      databaseName,
       schema: targetSchema,
       tableName: targetTable,
     };
@@ -459,7 +518,7 @@ LIMIT 10;`,
   const handleUpdateSchemas = (updatedSchemas: SchemaObject[]) => {
     setSchemas(updatedSchemas);
     if (activeConnection) {
-      DBEngine.saveSchema(activeConnection.id);
+      DBEngine.saveSchemas(activeConnection.id, updatedSchemas);
     }
   };
 
@@ -467,7 +526,7 @@ LIMIT 10;`,
   // persisted per connection so it survives reloads and sessions.
   const handleSetActiveSchema = (schemaName: string) => {
     setActiveSchema(schemaName);
-    if (activeConnection) DBEngine.setActiveSchema(activeConnection.id, schemaName);
+    if (activeConnection) DBEngine.setActiveSchema(activeConnection.id, schemaName, activeDatabase || activeConnection.database);
   };
 
   // Open the compare modal, optionally with a preselected base schema.
@@ -486,7 +545,8 @@ LIMIT 10;`,
     const result = await DBEngine.executeQuery(
       activeConnection.id,
       sql,
-      activeSchema || activeConnection.defaultSchema || 'public'
+      activeSchema || activeConnection.defaultSchema || 'public',
+      activeDatabase || activeConnection.database
     );
 
     // Update active tab result
@@ -522,13 +582,24 @@ LIMIT 10;`,
 
   // Generate DDL statements from treeview context menu
   const handleGenerateQuery = (
-    type: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'CREATE_TABLE',
+    type: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'CREATE_TABLE' | 'DDL',
     schemaName: string,
-    objectData: any
+    objectData: any,
+    databaseName = activeDatabase || activeConnection?.database || ''
   ) => {
     if (!objectData) return;
     const ddl = DBEngine.generateDDL(type, schemaName, objectData);
-    handleNewQueryTab(ddl, `${type} ${objectData.name}`);
+    const newId = `tab-${Date.now()}`;
+    const newTab: QueryTab = {
+      id: newId,
+      title: `${type} ${objectData.name}`,
+      type: 'editor',
+      query: ddl,
+      connectionId: activeConnection?.id || '',
+      databaseName,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
   };
 
   // Save snippet
@@ -549,27 +620,34 @@ LIMIT 10;`,
   // Delete table object from context menu. Guarded: drops outside the active
   // schema always require typed confirmation (schema-activity guard); drops
   // inside the active schema get a plain confirm.
-  const handleDropObject = async (type: string, schemaName: string, objectName: string) => {
+  const handleDropObject = async (type: string, schemaName: string, objectName: string, databaseName = activeDatabase || activeConnection?.database || '') => {
     if (!activeConnection) return;
-    const target = { type, schemaName, objectName };
-    if (schemaName !== activeSchema) {
+    const target = { type, schemaName, objectName, databaseName };
+    if (databaseName !== activeDatabase || schemaName !== activeSchema) {
       setDropGuard({ open: true, target, confirmedText: '' });
       return;
     }
-    if (!window.confirm(`Drop ${type} ${schemaName}.${objectName}? This cannot be undone.`)) return;
+    if (!window.confirm(`Drop ${type} ${databaseName}.${schemaName}.${objectName}? This cannot be undone.`)) return;
     await executeDrop(target);
   };
 
-  const executeDrop = async (target: { type: string; schemaName: string; objectName: string }) => {
+  const executeDrop = async (target: { type: string; schemaName: string; objectName: string; databaseName?: string }) => {
     if (!activeConnection) return;
     const dropSql = `DROP ${target.type} ${target.schemaName}.${target.objectName};`;
-    const result = await DBEngine.executeQuery(activeConnection.id, dropSql);
+    const result = await DBEngine.executeQuery(
+      activeConnection.id,
+      dropSql,
+      target.schemaName,
+      target.databaseName || activeDatabase || activeConnection.database
+    );
     setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
     handleRefreshSchema();
   };
 
   // Table Data Viewer Actions
-  const currentSchemaObj = schemas.find((s) => s.name === activeTab.schema) || schemas[0];
+  const currentSchemaObj = schemas.find(
+    (s) => s.name === activeTab.schema && (!activeTab.databaseName || s.databaseName === activeTab.databaseName)
+  ) || schemas[0];
   const currentTableObj = currentSchemaObj?.tables.find((t) => t.name === activeTab.tableName);
 
   // In live mode, grid edits run REAL SQL against the connected database; in
@@ -604,7 +682,12 @@ LIMIT 10;`,
         .map((c) => `${c.name} = ${sqlLiteral(updatedRow[c.name])}`)
         .join(', ');
       const sql = `UPDATE ${table.schema}.${table.name} SET ${setClause} WHERE ${pkCol.name} = ${sqlLiteral(updatedRow[pkCol.name])};`;
-      const result = await DBEngine.executeQuery(activeConnection.id, sql);
+      const result = await DBEngine.executeQuery(
+        activeConnection.id,
+        sql,
+        activeSchema || activeConnection.defaultSchema || 'public',
+        activeDatabase || activeConnection.database
+      );
       setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
     }
     handleRefreshSchema();
@@ -622,7 +705,12 @@ LIMIT 10;`,
       if (cols.length === 0) return;
       const sql = `INSERT INTO ${table.schema}.${table.name} (${cols.map((c) => c.name).join(', ')})
         VALUES (${cols.map((c) => sqlLiteral(newRow[c.name])).join(', ')});`;
-      const result = await DBEngine.executeQuery(activeConnection.id, sql);
+      const result = await DBEngine.executeQuery(
+        activeConnection.id,
+        sql,
+        activeSchema || activeConnection.defaultSchema || 'public',
+        activeDatabase || activeConnection.database
+      );
       setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
     }
     handleRefreshSchema();
@@ -648,7 +736,12 @@ LIMIT 10;`,
         return;
       }
       const sql = `DELETE FROM ${table.schema}.${table.name} WHERE ${pkCol.name} = ${sqlLiteral(deletedRow[pkCol.name])};`;
-      const result = await DBEngine.executeQuery(activeConnection.id, sql);
+      const result = await DBEngine.executeQuery(
+        activeConnection.id,
+        sql,
+        activeSchema || activeConnection.defaultSchema || 'public',
+        activeDatabase || activeConnection.database
+      );
       setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
     }
     handleRefreshSchema();
@@ -684,6 +777,10 @@ LIMIT 10;`,
         <TreeView
           activeConnection={activeConnection}
           schemas={schemas}
+          databases={databases}
+          activeDatabase={activeDatabase}
+          databaseLoading={databaseLoading}
+          onSelectDatabase={handleSelectDatabase}
           savedQueries={savedQueries}
           history={executionHistory.map((h) => h.query)}
           onContextMenu={setContextMenu}
@@ -694,7 +791,7 @@ LIMIT 10;`,
           onOpenNewTableModal={() => setIsNewTableModalOpen(true)}
           onRefreshSchema={handleRefreshSchema}
           onOpenEavStudio={(sName) => handleOpenEavStudio(sName)}
-          onOpenQueryBuilder={(sName, tName) => handleOpenQueryBuilder(sName, tName)}
+          onOpenQueryBuilder={(sName, tName, dbName) => handleOpenQueryBuilder(sName, tName, dbName)}
           activeSchema={activeSchema}
           onSetActiveSchema={handleSetActiveSchema}
           onCompareSchemas={handleCompareSchemas}
@@ -759,7 +856,7 @@ LIMIT 10;`,
               table={currentTableObj}
               schemas={schemas}
               onOpenTable={(sName, tName) => handleOpenTableViewer(sName, tName)}
-              onOpenQueryBuilder={(sName, tName) => handleOpenQueryBuilder(sName, tName)}
+              onOpenQueryBuilder={(sName, tName, dbName) => handleOpenQueryBuilder(sName, tName, dbName)}
               onRefresh={handleRefreshSchema}
               onUpdateRow={handleDataViewerUpdateRow}
               onAddRow={handleDataViewerAddRow}
@@ -810,7 +907,7 @@ LIMIT 10;`,
           setObjectDetailsModal({ open: true, schemaName: sName, objectName: oName, objectData: oData })
         }
         onOpenEavStudio={(sName) => handleOpenEavStudio(sName)}
-        onOpenQueryBuilder={(sName, tName) => handleOpenQueryBuilder(sName, tName)}
+        onOpenQueryBuilder={(sName, tName, dbName) => handleOpenQueryBuilder(sName, tName, dbName)}
         onSetActiveSchema={handleSetActiveSchema}
         isActiveSchema={!!contextMenu.schemaName && contextMenu.schemaName === activeSchema}
         onCompareSchemas={handleCompareSchemas}
@@ -831,11 +928,15 @@ LIMIT 10;`,
         isOpen={isNewTableModalOpen}
         onClose={() => setIsNewTableModalOpen(false)}
         onCreateTable={async (ddl) => {
-          if (activeConnection) {
-            const result = await DBEngine.executeQuery(activeConnection.id, ddl);
-            setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
-            handleRefreshSchema();
-          }
+          if (!activeConnection) return;
+          const result = await DBEngine.executeQuery(
+            activeConnection.id,
+            ddl,
+            activeSchema || activeConnection.defaultSchema || 'public',
+            activeDatabase || activeConnection.database
+          );
+          setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
+          handleRefreshSchema();
         }}
       />
 
