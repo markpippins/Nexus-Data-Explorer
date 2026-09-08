@@ -94,6 +94,25 @@ export const TreeView: React.FC<TreeViewProps> = ({
     if (databaseName !== activeDatabase) onSelectDatabase?.(databaseName);
   };
 
+  // Expanding a schema reveals exactly one more level: its Tables/Views/
+  // Triggers/Procedures categories (categories auto-open so the tables are
+  // visible immediately; collapsing hides them again). Categories remain
+  // individually toggleable afterwards.
+  const handleSchemaClick = (schemaId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedNodes((prev) => {
+      const opening = !prev[schemaId];
+      return {
+        ...prev,
+        [schemaId]: opening,
+        [`${schemaId}-tables`]: opening,
+        [`${schemaId}-views`]: opening,
+        [`${schemaId}-triggers`]: opening,
+        [`${schemaId}-procedures`]: opening,
+      };
+    });
+  };
+
   const handleRightClick = (
     e: React.MouseEvent,
     type: ContextMenuState['type'],
@@ -159,13 +178,13 @@ export const TreeView: React.FC<TreeViewProps> = ({
 
   const renderSchema = (schema: SchemaObject, databaseName: string) => {
     const schemaId = `schema-${databaseName}-${schema.name}`;
-    const schemaExpanded = searchTerm.trim() ? true : (expandedNodes[schemaId] ?? true);
+    const schemaExpanded = searchTerm.trim() ? true : (expandedNodes[schemaId] ?? false);
     const isActive = activeSchema === schema.name && activeDatabase === databaseName;
     const isDefault = activeConnection?.database === databaseName && activeConnection.defaultSchema === schema.name;
     const renderCategory = (kind: 'tables' | 'views' | 'triggers' | 'procedures', label: string, icon: React.ReactNode, items: any[]) => {
       if (!items.length) return null;
       const id = `${schemaId}-${kind}`;
-      const expanded = searchTerm.trim() ? true : (expandedNodes[id] ?? true);
+      const expanded = searchTerm.trim() ? true : (expandedNodes[id] ?? false);
       return <div>
         <div onClick={(e) => toggleNode(id, e)} className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#2D3139]/60 cursor-pointer text-[#94A3B8] text-[11px]">
           {expanded ? <ChevronDown className="w-3 h-3 text-[#64748B]" /> : <ChevronRight className="w-3 h-3 text-[#64748B]" />}
@@ -203,7 +222,7 @@ export const TreeView: React.FC<TreeViewProps> = ({
     };
 
     return <div key={`${databaseName}-${schema.name}`} className="text-xs">
-      <div onClick={(e) => toggleNode(schemaId, e)} onContextMenu={(e) => handleRightClick(e, 'schema', schema.name, undefined, undefined, databaseName)} className={`flex items-center space-x-1.5 px-2 py-1 rounded cursor-pointer font-medium group ${isActive ? 'bg-blue-950/50 border border-blue-600/40 text-[#E2E8F0]' : 'hover:bg-[#2D3139] text-[#E2E8F0]'}`}>
+      <div onClick={(e) => handleSchemaClick(schemaId, e)} onContextMenu={(e) => handleRightClick(e, 'schema', schema.name, undefined, undefined, databaseName)} className={`flex items-center space-x-1.5 px-2 py-1 rounded cursor-pointer font-medium group ${isActive ? 'bg-blue-950/50 border border-blue-600/40 text-[#E2E8F0]' : 'hover:bg-[#2D3139] text-[#E2E8F0]'}`}>
         {schemaExpanded ? <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" /> : <ChevronRight className="w-3.5 h-3.5 text-[#94A3B8]" />}
         {schemaExpanded ? <FolderOpen className={`w-3.5 h-3.5 ${isActive ? 'text-blue-400' : 'text-amber-400'}`} /> : <Folder className={`w-3.5 h-3.5 ${isActive ? 'text-blue-400' : 'text-amber-400'}`} />}
         <span className="truncate">{highlight(schema.name)}</span>
@@ -236,7 +255,7 @@ export const TreeView: React.FC<TreeViewProps> = ({
       {!databaseLoading && databases.length === 0 && <div className="py-8 px-3 text-center text-[#64748B] text-[11px]">No databases discovered.</div>}
       {!databaseLoading && databases.map((database) => {
         const databaseId = `database-${database.name}`;
-        const expanded = expandedNodes[databaseId] ?? database.name === activeDatabase;
+        const expanded = expandedNodes[databaseId] ?? false;
         const isActiveDatabase = database.name === activeDatabase;
         const visibleSchemas = isActiveDatabase ? filteredSchemas : (database.schemas || []);
         return <div key={database.name}>
