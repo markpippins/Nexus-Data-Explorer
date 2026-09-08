@@ -31,6 +31,8 @@ interface ContextMenuProps {
   onSetActiveSchema?: (schemaName: string) => void;
   isActiveSchema?: boolean;
   onCompareSchemas?: (left: string) => void;
+  onGenerateSchemaDDL?: (schemaName: string, databaseName?: string) => void;
+  onGenerateDatabaseDDL?: (databaseName: string) => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -45,6 +47,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onSetActiveSchema,
   isActiveSchema,
   onCompareSchemas,
+  onGenerateSchemaDDL,
+  onGenerateDatabaseDDL,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -157,9 +161,20 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           {onCompareSchemas && <button onClick={() => { onCompareSchemas(schemaName); onClose(); }} className={`${actionClass} text-purple-300 font-medium`}>
             <GitCompare className="w-3.5 h-3.5 text-purple-400" /><span>Compare with Another Schema…</span>
           </button>}
+          {onGenerateSchemaDDL && <button onClick={() => { onGenerateSchemaDDL(schemaName, databaseName); onClose(); }} className={ddlClass}>
+            <Code className="w-3.5 h-3.5 text-indigo-400" /><span>Generate Schema DDL in New Query Tab</span>
+          </button>}
           <button onClick={() => { onOpenEavStudio?.(schemaName); onClose(); }} className={`${actionClass} text-purple-300 font-medium`}>
             <Layers className="w-3.5 h-3.5 text-purple-400" /><span>Open EAV Object Store Studio</span>
           </button>
+        </>
+      )}
+
+      {type === 'connection' && state.databaseName && (
+        <>
+          {onGenerateDatabaseDDL && <button onClick={() => { onGenerateDatabaseDDL(state.databaseName!); onClose(); }} className={ddlClass}>
+            <Code className="w-3.5 h-3.5 text-indigo-400" /><span>Generate Database DDL in New Query Tab</span>
+          </button>}
         </>
       )}
     </div>

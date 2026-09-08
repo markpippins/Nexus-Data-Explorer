@@ -602,6 +602,50 @@ LIMIT 10;`,
     setActiveTabId(newId);
   };
 
+  // Whole-schema DDL → new query tab (context menu on a schema node).
+  const handleGenerateSchemaDDL = (schemaName: string, databaseName?: string) => {
+    if (!activeConnection) return;
+    const db = databaseName || activeDatabase || activeConnection.database;
+    const schema = schemas.find((s) => s.name === schemaName) || databases.find((d) => d.name === db)?.schemas?.find((s) => s.name === schemaName);
+    if (!schema) return;
+    const ddl = DBEngine.generateSchemaDDL(schema, db);
+    const newId = `tab-${Date.now()}`;
+    const newTab: QueryTab = {
+      id: newId,
+      title: `DDL schema ${db}.${schemaName}`,
+      type: 'editor',
+      query: ddl,
+      connectionId: activeConnection.id,
+      databaseName: db,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  };
+
+  // Whole-database DDL → new query tab (context menu on a database node).
+  // Opens every loaded schema of that database, one CREATE SCHEMA + objects
+  // per section; schemas that were never expanded are skipped (comment notes it).
+  const handleGenerateDatabaseDDL = (databaseName: string) => {
+    if (!activeConnection) return;
+    const database = databases.find((d) => d.name === databaseName);
+    const loaded = database?.schemas || [];
+    const sections = loaded.length
+      ? loaded.map((schema) => DBEngine.generateSchemaDDL(schema, databaseName)).join('\n\n')
+      : `-- Database ${databaseName}: no schemas have been loaded into the tree yet.\n-- Expand the schemas you want included, then regenerate.`;
+    const header = `-- Database DDL for ${databaseName}\n-- ${loaded.length} loaded schema(s)\n\n`;
+    const newId = `tab-${Date.now()}`;
+    const newTab: QueryTab = {
+      id: newId,
+      title: `DDL database ${databaseName}`,
+      type: 'editor',
+      query: header + sections,
+      connectionId: activeConnection.id,
+      databaseName,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  };
+
   // Save snippet
   const handleSaveSnippet = () => {
     if (!activeTab.query.trim()) return;
@@ -911,6 +955,8 @@ LIMIT 10;`,
         onSetActiveSchema={handleSetActiveSchema}
         isActiveSchema={!!contextMenu.schemaName && contextMenu.schemaName === activeSchema}
         onCompareSchemas={handleCompareSchemas}
+        onGenerateSchemaDDL={handleGenerateSchemaDDL}
+        onGenerateDatabaseDDL={handleGenerateDatabaseDDL}
       />
 
       {/* Modals */}
