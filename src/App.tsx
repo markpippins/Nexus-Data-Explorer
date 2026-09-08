@@ -28,6 +28,7 @@ import { AiAssistantModal } from './components/Modals/AiAssistantModal';
 import { ObjectDetailsModal } from './components/Modals/ObjectDetailsModal';
 import { ShortcutsModal } from './components/Modals/ShortcutsModal';
 import { SchemaCompareModal } from './components/Modals/SchemaCompareModal';
+import { DropGuardModal } from './components/Modals/DropGuardModal';
 
 export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light' | 'steel'>(() => {
@@ -87,6 +88,14 @@ LIMIT 10;`,
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [compareBaseSchema, setCompareBaseSchema] = useState<string | undefined>(undefined);
   const [compareRightSchema, setCompareRightSchema] = useState<string | undefined>(undefined);
+
+  // Schema-activity drop guard: when a drop targets a schema other than the
+  // active one, require typed confirmation naming the object exactly.
+  const [dropGuard, setDropGuard] = useState<{
+    open: boolean;
+    target: { type: string; schemaName: string; objectName: string } | null;
+    confirmedText: string;
+  }>({ open: false, target: null, confirmedText: '' });
 
   // Sidebar width (px) — user-resizable via the tree's right-edge drag
   // handle; persisted across sessions like the active schema.
@@ -537,10 +546,23 @@ LIMIT 10;`,
     localStorage.setItem('data_workbench_saved_snippets', JSON.stringify(updated));
   };
 
-  // Delete table object from context menu
+  // Delete table object from context menu. Guarded: drops outside the active
+  // schema always require typed confirmation (schema-activity guard); drops
+  // inside the active schema get a plain confirm.
   const handleDropObject = async (type: string, schemaName: string, objectName: string) => {
     if (!activeConnection) return;
-    const dropSql = `DROP ${type} ${schemaName}.${objectName};`;
+    const target = { type, schemaName, objectName };
+    if (schemaName !== activeSchema) {
+      setDropGuard({ open: true, target, confirmedText: '' });
+      return;
+    }
+    if (!window.confirm(`Drop ${type} ${schemaName}.${objectName}? This cannot be undone.`)) return;
+    await executeDrop(target);
+  };
+
+  const executeDrop = async (target: { type: string; schemaName: string; objectName: string }) => {
+    if (!activeConnection) return;
+    const dropSql = `DROP ${target.type} ${target.schemaName}.${target.objectName};`;
     const result = await DBEngine.executeQuery(activeConnection.id, dropSql);
     setExecutionHistory((prev) => [result, ...prev.slice(0, 49)]);
     handleRefreshSchema();
@@ -850,6 +872,18 @@ LIMIT 10;`,
           setIsCompareModalOpen(false);
           setCompareBaseSchema(undefined);
           setCompareRightSchema(undefined);
+        }}
+      />
+
+      <DropGuardModal
+        isOpen={dropGuard.open}
+        target={dropGuard.target}
+        activeSchema={activeSchema}
+        onClose={() => setDropGuard({ open: false, target: null, confirmedText: '' })}
+        onConfirm={async () => {
+          const target = dropGuard.target;
+          setDropGuard({ open: false, target: null, confirmedText: '' });
+          if (target) await executeDrop(target);
         }}
       />
     </div>
