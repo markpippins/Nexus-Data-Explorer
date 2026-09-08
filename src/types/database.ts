@@ -6,6 +6,7 @@ export interface DBConnection {
   engine: DatabaseEngineType;
   host: string;
   port: number;
+  /** Initial/default PostgreSQL database for this server connection. */
   database: string;
   username: string;
   password?: string;
@@ -15,11 +16,21 @@ export interface DBConnection {
   isSample?: boolean;
   createdAt: string;
   /**
-   * Connection-level "Default" schema: the schema new/unqualified work
-   * defaults to. Purely a UI default — every schema on the database stays
-   * browsable and activatable from the tree regardless of this value.
+   * Connection-level "Default" schema for the default database. Every
+   * database and schema remains independently browsable in the tree.
    */
   defaultSchema?: string;
+}
+
+/** A PostgreSQL database discovered on a connected server. */
+export interface DatabaseNode {
+  name: string;
+  allowConnections?: boolean;
+  isTemplate?: boolean;
+  schemas?: SchemaObject[];
+  schemasLoaded?: boolean;
+  loading?: boolean;
+  error?: string;
 }
 
 export interface ColumnDefinition {
@@ -78,6 +89,8 @@ export interface StoredProcedureObject {
 
 export interface SchemaObject {
   name: string;
+  /** UI-only database context when the tree flattens loaded databases. */
+  databaseName?: string;
   category?: 'shrapnel' | 'standard' | string;
   tables: TableObject[];
   views: ViewObject[];
@@ -129,6 +142,8 @@ export interface QueryTab {
   type: 'editor' | 'table-viewer' | 'erd' | 'eav-studio' | 'query-builder' | 'diff-viewer';
   query: string;
   connectionId: string;
+  /** Database context for tabs opened from the multi-database tree. */
+  databaseName?: string;
   schema?: string;
   tableName?: string;
   activeResult?: QueryExecutionResult;
@@ -143,6 +158,7 @@ export interface ContextMenuState {
   y: number;
   type: 'connection' | 'schema' | 'table' | 'view' | 'trigger' | 'procedure' | 'category';
   connectionId?: string;
+  databaseName?: string;
   schemaName?: string;
   objectName?: string;
   objectData?: any;

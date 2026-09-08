@@ -1,4 +1,5 @@
 import {
+  DatabaseNode,
   DBConnection,
   SchemaObject,
   TableObject,
@@ -81,6 +82,7 @@ export class DBEngine {
   private static connections: DBConnection[] = [];
   private static schemaStore: Record<string, SchemaObject[]> = {};
   private static liveSchemaCache: Record<string, SchemaObject[]> = {};
+  private static liveDatabaseCache: Record<string, DatabaseNode[]> = {};
 
   public static initialize(): void {
     // Load user connections from localStorage. In live mode the app starts with
@@ -181,34 +183,68 @@ export class DBEngine {
   public static deleteConnection(id: string): void {
     this.connections = this.connections.filter((c) => c.id !== id);
     delete this.schemaStore[id];
-    delete this.liveSchemaCache[id];
+    Object.keys(this.liveSchemaCache)
+      .filter((key) => key === id || key.startsWith(`${id}:`))
+      .forEach((key) => delete this.liveSchemaCache[key]);
+    delete this.liveDatabaseCache[id];
     localStorage.removeItem(`${LOCAL_SCHEMAS_PREFIX}${id}`);
     localStorage.removeItem(`${LOCAL_ACTIVE_SCHEMA_PREFIX}${id}`);
     this.saveConnections();
   }
 
+  private static databaseCacheKey(connectionId: string, databaseName: string): string {
+    return `${connectionId}:${databaseName}`;
+  }
+
+  public static async getDatabases(
+    connectionId: string,
+    opts?: { bypassCache?: boolean }
+  ): Promise<DatabaseNode[]> {
+    const conn = this.connections.find((c) => c.id === connectionId);
+    if (!conn) return [];
+    if (!isLiveMode()) {
+      return [{ name: conn.database, allowConnections: true, isTemplate: false }];
+    }
+    const cached = this.liveDatabaseCache[connectionId];
+    if (!opts?.bypassCache && cached) return cached;
+    const data = await api<{ databases: DatabaseNode[] }>('/api/db/databases', {
+      engine: conn.engine,
+      host: conn.host,
+      port: conn.port,
+      database: conn.database,
+      username: conn.username,
+      password: conn.password,
+      ssl: conn.ssl,
+    });
+    const databases = data.databases || [];
+    this.liveDatabaseCache[connectionId] = databases;
+    return databases;
+  }
+
   public static async getSchemas(
     connectionId: string,
+    databaseName?: string,
     opts?: { bypassCache?: boolean }
   ): Promise<SchemaObject[]> {
     if (isLiveMode()) {
       const conn = this.connections.find((c) => c.id === connectionId);
       if (!conn) return [];
-      // Only trust a NON-empty cache ([] is truthy in JS — caching it here used
-      // to make Refresh permanently return an empty tree).
-      const cached = this.liveSchemaCache[connectionId];
+      const database = databaseName || conn.database;
+      const cacheKey = this.databaseCacheKey(connectionId, database);
+      const cached = this.liveSchemaCache[cacheKey];
       if (!opts?.bypassCache && Array.isArray(cached) && cached.length > 0) return cached;
-      // Real schema discovery against the user-supplied database.
+      // Real schema discovery against the selected database.
       const data = await api<{ schemas: SchemaObject[] }>('/api/db/schemas', {
+        engine: conn.engine,
         host: conn.host,
         port: conn.port,
-        database: conn.database,
+        database,
         username: conn.username,
         password: conn.password,
         ssl: conn.ssl,
       });
-      const discovered = data.schemas || [];
-      if (discovered.length > 0) this.liveSchemaCache[connectionId] = discovered;
+      const discovered = (data.schemas || []).map((schema) => ({ ...schema, databaseName: database }));
+      if (discovered.length > 0) this.liveSchemaCache[cacheKey] = discovered;
       return discovered;
     }
 
@@ -220,7 +256,14 @@ export class DBEngine {
         return [];
       }
     }
-    return this.schemaStore[connectionId];
+      const schemas = this.schemaStore[connectionId] || [];
+      if (databaseName && databaseName !== this.connections.find((c) => c.id === connectionId)?.database) {
+        return [];
+      }
+      return schemas.map((schema) => ({
+        ...schema,
+        databaseName: databaseName || this.connections.find((c) => c.id === connectionId)?.database,
+      }));
   }
 
   public static saveConnections(): void {
@@ -233,21 +276,23 @@ export class DBEngine {
    * decides how to reconcile (e.g. fall back to default/public after a
    * refresh drops the schema).
    */
-  public static getActiveSchema(connectionId: string): string | null {
+  public static getActiveSchema(connectionId: string, databaseName?: string): string | null {
     try {
-      return localStorage.getItem(`${LOCAL_ACTIVE_SCHEMA_PREFIX}${connectionId}`) || null;
+      const key = `${LOCAL_ACTIVE_SCHEMA_PREFIX}${connectionId}_${databaseName || 'default'}`;
+      return localStorage.getItem(key) || null;
     } catch {
       return null;
     }
   }
 
   /** Persist the ACTIVE schema for a connection (best-effort; never throws). */
-  public static setActiveSchema(connectionId: string, schemaName: string | null): void {
+  public static setActiveSchema(connectionId: string, schemaName: string | null, databaseName?: string): void {
     try {
+      const key = `${LOCAL_ACTIVE_SCHEMA_PREFIX}${connectionId}_${databaseName || 'default'}`;
       if (schemaName) {
-        localStorage.setItem(`${LOCAL_ACTIVE_SCHEMA_PREFIX}${connectionId}`, schemaName);
+        localStorage.setItem(key, schemaName);
       } else {
-        localStorage.removeItem(`${LOCAL_ACTIVE_SCHEMA_PREFIX}${connectionId}`);
+        localStorage.removeItem(key);
       }
     } catch {
       // localStorage unavailable (private mode, quota) — persistence is a
@@ -279,11 +324,35 @@ export class DBEngine {
 
   // Generate DDL statements
   public static generateDDL(
-    type: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'CREATE_TABLE',
+    type: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'CREATE_TABLE' | 'DDL',
     schemaName: string,
-    table: TableObject
+    objectData: TableObject | { name: string; definition?: string; tableName?: string; functionName?: string; returnType?: string; parameters?: { name: string; type: string }[] }
   ): string {
-    const qualifiedName = `${schemaName}.${table.name}`;
+    const qualifiedName = `${schemaName}.${objectData.name}`;
+
+    if (type === 'DDL') {
+      if ('columns' in objectData) {
+        return this.generateDDL('CREATE_TABLE', schemaName, objectData);
+      }
+      const definition = 'definition' in objectData ? objectData.definition : undefined;
+      if (definition) {
+        const ddl = definition.trim();
+        if ((objectData as any).__objectType === 'view') {
+          return `CREATE OR REPLACE VIEW ${qualifiedName} AS\n${ddl};`;
+        }
+        return ddl.endsWith(';') ? ddl : `${ddl};`;
+      }
+      if ('tableName' in objectData && objectData.tableName) {
+        return `-- Trigger ${qualifiedName} is missing its server definition.`;
+      }
+      if ('returnType' in objectData) {
+        const parameters = (objectData.parameters || []).map((parameter) => `${parameter.name} ${parameter.type}`).join(', ');
+        return `CREATE OR REPLACE FUNCTION ${qualifiedName}(${parameters})\nRETURNS ${objectData.returnType || 'void'}\nLANGUAGE plpgsql\nAS $$\n-- Function body was not returned by the server.\nBEGIN\n  NULL;\nEND;\n$$;`;
+      }
+      return `-- No DDL definition was returned for ${qualifiedName}.`;
+    }
+
+    const table = objectData as TableObject;
 
     switch (type) {
       case 'SELECT':
@@ -330,7 +399,8 @@ export class DBEngine {
   public static async executeQuery(
     connectionId: string,
     rawQuery: string,
-    defaultSchema = 'public'
+    defaultSchema = 'public',
+    databaseName = this.connections.find((c) => c.id === connectionId)?.database,
   ): Promise<QueryExecutionResult> {
     if (isLiveMode()) {
       const conn = this.connections.find((c) => c.id === connectionId);
@@ -352,7 +422,7 @@ export class DBEngine {
           connection: {
             host: conn.host,
             port: conn.port,
-            database: conn.database,
+            database: databaseName || conn.database,
             username: conn.username,
             password: conn.password,
             ssl: conn.ssl,

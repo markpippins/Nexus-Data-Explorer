@@ -3,7 +3,7 @@ import { ShieldAlert, X, Trash2 } from 'lucide-react';
 
 interface DropGuardModalProps {
   isOpen: boolean;
-  target: { type: string; schemaName: string; objectName: string } | null;
+  target: { type: string; schemaName: string; objectName: string; databaseName?: string } | null;
   /** The schema currently marked ACTIVE in the tree (for context in the copy). */
   activeSchema: string | null;
   onConfirm: () => void;
@@ -22,7 +22,7 @@ export const DropGuardModal: React.FC<DropGuardModalProps> = ({ isOpen, target, 
 
   if (!isOpen || !target) return null;
 
-  const qualified = `${target.schemaName}.${target.objectName}`;
+  const qualified = `${target.databaseName ? `${target.databaseName}.` : ''}${target.schemaName}.${target.objectName}`;
   const ready = confirmedText.trim() === qualified;
 
   return (
