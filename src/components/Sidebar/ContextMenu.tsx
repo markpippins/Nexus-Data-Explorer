@@ -11,7 +11,9 @@ import {
   Copy,
   Layers,
   Code,
-  Boxes
+  Boxes,
+  Target,
+  GitCompare
 } from 'lucide-react';
 import { ContextMenuState } from '../../types/database';
 
@@ -28,6 +30,12 @@ interface ContextMenuProps {
   onViewProperties: (schemaName: string, objectName: string, objectData: any) => void;
   onOpenEavStudio?: (schemaName: string) => void;
   onOpenQueryBuilder?: (schemaName?: string, tableName?: string) => void;
+  /** Set this schema as the active one. */
+  onSetActiveSchema?: (schemaName: string) => void;
+  /** Whether this schema is currently active (hides Set Active when true). */
+  isActiveSchema?: boolean;
+  /** Open the schema-compare modal with this schema as the base. */
+  onCompareSchemas?: (left: string) => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -39,6 +47,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onViewProperties,
   onOpenEavStudio,
   onOpenQueryBuilder,
+  onSetActiveSchema,
+  isActiveSchema,
+  onCompareSchemas,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -240,6 +251,30 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
       {type === 'schema' && (
         <>
+          {onSetActiveSchema && !isActiveSchema && (
+            <button
+              onClick={() => {
+                onSetActiveSchema(schemaName);
+                onClose();
+              }}
+              className="w-full px-3 py-1.5 text-left hover:bg-blue-950/60 text-blue-300 flex items-center space-x-2 transition-colors font-medium"
+            >
+              <Target className="w-3.5 h-3.5 text-blue-400" />
+              <span>Set Active Schema</span>
+            </button>
+          )}
+          {onCompareSchemas && (
+            <button
+              onClick={() => {
+                onCompareSchemas(schemaName);
+                onClose();
+              }}
+              className="w-full px-3 py-1.5 text-left hover:bg-purple-950/60 text-purple-300 flex items-center space-x-2 transition-colors font-medium"
+            >
+              <GitCompare className="w-3.5 h-3.5 text-purple-400" />
+              <span>Compare with Another Schema…</span>
+            </button>
+          )}
           <button
             onClick={() => {
               if (onOpenEavStudio) onOpenEavStudio(schemaName);

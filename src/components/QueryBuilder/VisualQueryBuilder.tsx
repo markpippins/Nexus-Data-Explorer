@@ -703,11 +703,11 @@ export const VisualQueryBuilder: React.FC<VisualQueryBuilderProps> = ({
   ]);
 
   // Execute Query in Engine
-  const handleExecute = () => {
+  const handleExecute = async () => {
     setIsExecuting(true);
     try {
       const connId = activeConnectionId || 'conn-ecommerce-pg';
-      const res = DBEngine.executeQuery(connId, generatedSql, primaryTable.schema);
+      const res = await DBEngine.executeQuery(connId, generatedSql, primaryTable.schema);
       setQueryResult(res);
     } catch (err: any) {
       setQueryResult({

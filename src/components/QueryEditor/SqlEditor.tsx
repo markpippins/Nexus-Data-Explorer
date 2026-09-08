@@ -9,7 +9,7 @@ import {
   Code,
   Check,
   Copy,
-  Map,
+  Map as MapIcon,
   Terminal,
   Database,
   AlertTriangle,
@@ -1235,7 +1235,7 @@ export const SqlEditor: React.FC<SqlEditorProps> = ({
             }`}
             title="Toggle Minimap"
           >
-            <Map className="w-3.5 h-3.5" />
+            <MapIcon className="w-3.5 h-3.5" />
             <span>Minimap</span>
           </button>
 

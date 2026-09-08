@@ -14,6 +14,12 @@ export interface DBConnection {
   status: 'connected' | 'disconnected' | 'error';
   isSample?: boolean;
   createdAt: string;
+  /**
+   * Connection-level "Default" schema: the schema new/unqualified work
+   * defaults to. Purely a UI default — every schema on the database stays
+   * browsable and activatable from the tree regardless of this value.
+   */
+  defaultSchema?: string;
 }
 
 export interface ColumnDefinition {

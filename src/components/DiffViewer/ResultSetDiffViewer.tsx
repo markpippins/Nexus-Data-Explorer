@@ -120,18 +120,18 @@ export const ResultSetDiffViewer: React.FC<ResultSetDiffViewerProps> = ({
   }, [activeConnectionId]);
 
   // Execute left query
-  const handleRunLeft = (customSql?: string) => {
+  const handleRunLeft = async (customSql?: string) => {
     if (!activeConnectionId) return;
     const sql = customSql || leftQuery;
-    const res = DBEngine.executeQuery(activeConnectionId, sql);
+    const res = await DBEngine.executeQuery(activeConnectionId, sql);
     setLeftResult(res);
   };
 
   // Execute right query
-  const handleRunRight = (customSql?: string) => {
+  const handleRunRight = async (customSql?: string) => {
     if (!activeConnectionId) return;
     const sql = customSql || rightQuery;
-    const res = DBEngine.executeQuery(activeConnectionId, sql);
+    const res = await DBEngine.executeQuery(activeConnectionId, sql);
     setRightResult(res);
   };
 
@@ -157,15 +157,15 @@ export const ResultSetDiffViewer: React.FC<ResultSetDiffViewerProps> = ({
   };
 
   // Apply Preset
-  const handleApplyPreset = (preset: DiffPreset) => {
+  const handleApplyPreset = async (preset: DiffPreset) => {
     setLeftTitle(preset.leftTitle);
     setLeftQuery(preset.leftQuery);
     setRightTitle(preset.rightTitle);
     setRightQuery(preset.rightQuery);
 
     if (activeConnectionId) {
-      const resL = DBEngine.executeQuery(activeConnectionId, preset.leftQuery);
-      const resR = DBEngine.executeQuery(activeConnectionId, preset.rightQuery);
+      const resL = await DBEngine.executeQuery(activeConnectionId, preset.leftQuery);
+      const resR = await DBEngine.executeQuery(activeConnectionId, preset.rightQuery);
       setLeftResult(resL);
       setRightResult(resR);
     }

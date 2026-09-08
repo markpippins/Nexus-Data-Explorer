@@ -27,6 +27,7 @@ import { NewTableModal } from './components/Modals/NewTableModal';
 import { AiAssistantModal } from './components/Modals/AiAssistantModal';
 import { ObjectDetailsModal } from './components/Modals/ObjectDetailsModal';
 import { ShortcutsModal } from './components/Modals/ShortcutsModal';
+import { SchemaCompareModal } from './components/Modals/SchemaCompareModal';
 
 export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light' | 'steel'>(() => {
@@ -43,6 +44,12 @@ export default function App() {
   const [schemas, setSchemas] = useState<SchemaObject[]>([]);
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
   const [executionHistory, setExecutionHistory] = useState<QueryExecutionResult[]>([]);
+  /**
+   * The ACTIVE schema for the active connection: where unqualified names
+   * resolve and where new work starts. Independent of the connection's
+   * stored "default" schema — any schema in the tree can be made active.
+   */
+  const [activeSchema, setActiveSchema] = useState<string | null>(null);
 
   // Tabs state
   const [tabs, setTabs] = useState<QueryTab[]>([
@@ -75,6 +82,9 @@ LIMIT 10;`,
   const [isNewTableModalOpen, setIsNewTableModalOpen] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
+  const [compareBaseSchema, setCompareBaseSchema] = useState<string | undefined>(undefined);
+  const [compareRightSchema, setCompareRightSchema] = useState<string | undefined>(undefined);
   const [objectDetailsModal, setObjectDetailsModal] = useState<{
     open: boolean;
     schemaName: string;
@@ -103,6 +113,14 @@ LIMIT 10;`,
         try {
           const loadedSchemas = await DBEngine.getSchemas(active.id);
           setSchemas(loadedSchemas);
+          // Seed the active schema: the connection's default if it exists in
+          // the discovered set, else 'public' if present, else the first schema.
+          const seed =
+            (active.defaultSchema && loadedSchemas.find((s) => s.name === active.defaultSchema)?.name) ||
+            loadedSchemas.find((s) => s.name === 'public')?.name ||
+            loadedSchemas[0]?.name ||
+            null;
+          setActiveSchema(seed);
         } catch (err: any) {
           setSchemas([]);
           setExecutionHistory((prev) => [
@@ -143,6 +161,12 @@ LIMIT 10;`,
     try {
       const loadedSchemas = await DBEngine.getSchemas(conn.id);
       setSchemas(loadedSchemas);
+      const seed =
+        (conn.defaultSchema && loadedSchemas.find((s) => s.name === conn.defaultSchema)?.name) ||
+        loadedSchemas.find((s) => s.name === 'public')?.name ||
+        loadedSchemas[0]?.name ||
+        null;
+      setActiveSchema(seed);
     } catch (err: any) {
       setSchemas([]);
       setExecutionHistory((prev) => [
@@ -197,8 +221,11 @@ LIMIT 10;`,
 
   // Save a connection from the modal: update in place when editing an existing
   // connection id, otherwise add. Re-discovers schemas for the edited/new conn.
+  // A changed default schema re-seeds the active schema if the user hasn't
+  // explicitly chosen one this session.
   const handleSaveConnection = async (conn: DBConnection) => {
     const existing = connections.find((c) => c.id === conn.id);
+    const priorDefault = existing?.defaultSchema;
     if (existing) {
       DBEngine.updateConnection(conn);
       setConnections((prev) => prev.map((c) => (c.id === conn.id ? conn : c)));
@@ -208,6 +235,9 @@ LIMIT 10;`,
       setConnections((prev) => [...prev, conn]);
     }
     await handleSelectConnection(conn);
+    if (existing && conn.defaultSchema && conn.defaultSchema !== priorDefault && activeSchema) {
+      setActiveSchema(conn.defaultSchema);
+    }
   };
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
@@ -243,7 +273,7 @@ LIMIT 10;`,
   // Open Data Grid Tab on double-clicking table
   const handleOpenTableViewer = (schemaName: string, tableName: string) => {
     const existing = tabs.find(
-      (t) => t.type === 'table-viewer' && t.schemaName === schemaName && t.tableName === tableName
+      (t) => t.type === 'table-viewer' && t.schema === schemaName && t.tableName === tableName
     );
     if (existing) {
       setActiveTabId(existing.id);
@@ -372,11 +402,30 @@ LIMIT 10;`,
     }
   };
 
+  // Set the active schema (unqualified-name resolution target). Purely a UI
+  // session state — nothing is persisted server-side.
+  const handleSetActiveSchema = (schemaName: string) => {
+    setActiveSchema(schemaName);
+  };
+
+  // Open the compare modal, optionally with a preselected base schema.
+  const handleCompareSchemas = (left: string, right?: string) => {
+    setCompareBaseSchema(left);
+    if (right) setCompareRightSchema(right);
+    setIsCompareModalOpen(true);
+  };
+
   // Execute Query
   const handleRunQuery = async (queryToRun?: string) => {
     if (!activeConnection) return;
     const sql = queryToRun || activeTab.query;
-    const result = await DBEngine.executeQuery(activeConnection.id, sql);
+    // Unqualified names resolve against the ACTIVE schema (tree-selected);
+    // falls back to the connection default, then 'public'.
+    const result = await DBEngine.executeQuery(
+      activeConnection.id,
+      sql,
+      activeSchema || activeConnection.defaultSchema || 'public'
+    );
 
     // Update active tab result
     setTabs((prev) =>
@@ -571,6 +620,9 @@ LIMIT 10;`,
           onRefreshSchema={handleRefreshSchema}
           onOpenEavStudio={(sName) => handleOpenEavStudio(sName)}
           onOpenQueryBuilder={(sName, tName) => handleOpenQueryBuilder(sName, tName)}
+          activeSchema={activeSchema}
+          onSetActiveSchema={handleSetActiveSchema}
+          onCompareSchemas={handleCompareSchemas}
         />
 
         {/* Main Workspace Area */}
@@ -682,6 +734,9 @@ LIMIT 10;`,
         }
         onOpenEavStudio={(sName) => handleOpenEavStudio(sName)}
         onOpenQueryBuilder={(sName, tName) => handleOpenQueryBuilder(sName, tName)}
+        onSetActiveSchema={handleSetActiveSchema}
+        isActiveSchema={!!contextMenu.schemaName && contextMenu.schemaName === activeSchema}
+        onCompareSchemas={handleCompareSchemas}
       />
 
       {/* Modals */}
@@ -730,6 +785,17 @@ LIMIT 10;`,
       <ShortcutsModal
         isOpen={isShortcutsModalOpen}
         onClose={() => setIsShortcutsModalOpen(false)}
+      />
+
+      <SchemaCompareModal
+        isOpen={isCompareModalOpen}
+        schemas={schemas}
+        initialLeft={compareBaseSchema}
+        onClose={() => {
+          setIsCompareModalOpen(false);
+          setCompareBaseSchema(undefined);
+          setCompareRightSchema(undefined);
+        }}
       />
     </div>
   );
