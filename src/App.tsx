@@ -48,6 +48,8 @@ export default function App() {
    * The ACTIVE schema for the active connection: where unqualified names
    * resolve and where new work starts. Independent of the connection's
    * stored "default" schema — any schema in the tree can be made active.
+   * Persisted per connection (localStorage via DBEngine) so it survives
+   * reloads and sessions instead of re-seeding on every load.
    */
   const [activeSchema, setActiveSchema] = useState<string | null>(null);
 
@@ -85,6 +87,22 @@ LIMIT 10;`,
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [compareBaseSchema, setCompareBaseSchema] = useState<string | undefined>(undefined);
   const [compareRightSchema, setCompareRightSchema] = useState<string | undefined>(undefined);
+
+  // Sidebar width (px) — user-resizable via the tree's right-edge drag
+  // handle; persisted across sessions like the active schema.
+  const SIDEBAR_WIDTH_KEY = 'data_workbench_sidebar_width';
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    return saved >= 200 && saved <= 560 ? saved : 256;
+  });
+  const handleSidebarResize = (w: number) => {
+    setSidebarWidth(w);
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(w));
+    } catch {
+      /* persistence is best-effort */
+    }
+  };
   const [objectDetailsModal, setObjectDetailsModal] = useState<{
     open: boolean;
     schemaName: string;
@@ -110,17 +128,28 @@ LIMIT 10;`,
       if (conns.length > 0) {
         const active = conns[0];
         setActiveConnection(active);
+        // Restore the persisted active schema immediately (optimistic — no
+        // flash of the default while discovery runs), then reconcile below
+        // once the discovered set is known.
+        const persisted = DBEngine.getActiveSchema(active.id);
+        if (persisted) setActiveSchema(persisted);
         try {
           const loadedSchemas = await DBEngine.getSchemas(active.id);
           setSchemas(loadedSchemas);
-          // Seed the active schema: the connection's default if it exists in
-          // the discovered set, else 'public' if present, else the first schema.
-          const seed =
-            (active.defaultSchema && loadedSchemas.find((s) => s.name === active.defaultSchema)?.name) ||
-            loadedSchemas.find((s) => s.name === 'public')?.name ||
-            loadedSchemas[0]?.name ||
-            null;
-          setActiveSchema(seed);
+          if (persisted && loadedSchemas.some((s) => s.name === persisted)) {
+            setActiveSchema(persisted);
+          } else {
+            // No persisted value (first run) or the persisted schema no
+            // longer exists (dropped/renamed since last session): fall back
+            // to connection default → public → first, and persist the result.
+            const seed =
+              (active.defaultSchema && loadedSchemas.find((s) => s.name === active.defaultSchema)?.name) ||
+              loadedSchemas.find((s) => s.name === 'public')?.name ||
+              loadedSchemas[0]?.name ||
+              null;
+            setActiveSchema(seed);
+            DBEngine.setActiveSchema(active.id, seed);
+          }
         } catch (err: any) {
           setSchemas([]);
           setExecutionHistory((prev) => [
@@ -158,15 +187,23 @@ LIMIT 10;`,
   // Handle switching active connection
   const handleSelectConnection = async (conn: DBConnection) => {
     setActiveConnection(conn);
+    // Optimistically restore this connection's persisted active schema.
+    const persisted = DBEngine.getActiveSchema(conn.id);
+    if (persisted) setActiveSchema(persisted);
     try {
       const loadedSchemas = await DBEngine.getSchemas(conn.id);
       setSchemas(loadedSchemas);
-      const seed =
-        (conn.defaultSchema && loadedSchemas.find((s) => s.name === conn.defaultSchema)?.name) ||
-        loadedSchemas.find((s) => s.name === 'public')?.name ||
-        loadedSchemas[0]?.name ||
-        null;
-      setActiveSchema(seed);
+      if (persisted && loadedSchemas.some((s) => s.name === persisted)) {
+        setActiveSchema(persisted);
+      } else {
+        const seed =
+          (conn.defaultSchema && loadedSchemas.find((s) => s.name === conn.defaultSchema)?.name) ||
+          loadedSchemas.find((s) => s.name === 'public')?.name ||
+          loadedSchemas[0]?.name ||
+          null;
+        setActiveSchema(seed);
+        DBEngine.setActiveSchema(conn.id, seed);
+      }
     } catch (err: any) {
       setSchemas([]);
       setExecutionHistory((prev) => [
@@ -193,6 +230,18 @@ LIMIT 10;`,
         // (possibly empty) cached discovery.
         const reloaded = await DBEngine.getSchemas(activeConnection.id, { bypassCache: true });
         setSchemas([...reloaded]);
+        // Reconcile: if the persisted/active schema was dropped or renamed on
+        // the server since the last discovery, fall back and re-persist.
+        setActiveSchema((current) => {
+          if (current && reloaded.some((s) => s.name === current)) return current;
+          const seed =
+            (activeConnection.defaultSchema && reloaded.find((s) => s.name === activeConnection.defaultSchema)?.name) ||
+            reloaded.find((s) => s.name === 'public')?.name ||
+            reloaded[0]?.name ||
+            null;
+          DBEngine.setActiveSchema(activeConnection.id, seed);
+          return seed;
+        });
       } catch (err: any) {
         setSchemas([]);
         setExecutionHistory((prev) => [
@@ -235,8 +284,11 @@ LIMIT 10;`,
       setConnections((prev) => [...prev, conn]);
     }
     await handleSelectConnection(conn);
-    if (existing && conn.defaultSchema && conn.defaultSchema !== priorDefault && activeSchema) {
-      setActiveSchema(conn.defaultSchema);
+    // Default-schema change on an existing connection: re-seed the active
+    // schema and persist it (handleSelectConnection already restored the
+    // persisted value; this overrides it with the user's new intent).
+    if (existing && conn.defaultSchema && conn.defaultSchema !== priorDefault) {
+      handleSetActiveSchema(conn.defaultSchema);
     }
   };
 
@@ -402,10 +454,11 @@ LIMIT 10;`,
     }
   };
 
-  // Set the active schema (unqualified-name resolution target). Purely a UI
-  // session state — nothing is persisted server-side.
+  // Set the active schema (unqualified-name resolution target). Write-through
+  // persisted per connection so it survives reloads and sessions.
   const handleSetActiveSchema = (schemaName: string) => {
     setActiveSchema(schemaName);
+    if (activeConnection) DBEngine.setActiveSchema(activeConnection.id, schemaName);
   };
 
   // Open the compare modal, optionally with a preselected base schema.
@@ -623,6 +676,8 @@ LIMIT 10;`,
           activeSchema={activeSchema}
           onSetActiveSchema={handleSetActiveSchema}
           onCompareSchemas={handleCompareSchemas}
+          width={sidebarWidth}
+          onResize={handleSidebarResize}
         />
 
         {/* Main Workspace Area */}

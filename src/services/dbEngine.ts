@@ -15,6 +15,9 @@ import {
 const LOCAL_CONNECTIONS_KEY = 'data_workbench_connections';
 const LOCAL_SCHEMAS_PREFIX = 'data_workbench_schemas_';
 const LOCAL_SEEDED_KEY = 'data_workbench_seeded_defaults';
+// Per-connection ACTIVE schema persistence: survives page reloads and
+// sessions so the user's tree context is not re-seeded on every load.
+const LOCAL_ACTIVE_SCHEMA_PREFIX = 'data_workbench_active_schema_';
 
 // Default live connections seeded once on first run (or after a sample purge).
 // Credentials are intentionally NOT baked in — the user enters the password on
@@ -180,6 +183,7 @@ export class DBEngine {
     delete this.schemaStore[id];
     delete this.liveSchemaCache[id];
     localStorage.removeItem(`${LOCAL_SCHEMAS_PREFIX}${id}`);
+    localStorage.removeItem(`${LOCAL_ACTIVE_SCHEMA_PREFIX}${id}`);
     this.saveConnections();
   }
 
@@ -221,6 +225,34 @@ export class DBEngine {
 
   public static saveConnections(): void {
     localStorage.setItem(LOCAL_CONNECTIONS_KEY, JSON.stringify(this.connections));
+  }
+
+  /**
+   * Read the persisted ACTIVE schema for a connection. Returns the stored
+   * name even if it no longer exists in the current discovery — the caller
+   * decides how to reconcile (e.g. fall back to default/public after a
+   * refresh drops the schema).
+   */
+  public static getActiveSchema(connectionId: string): string | null {
+    try {
+      return localStorage.getItem(`${LOCAL_ACTIVE_SCHEMA_PREFIX}${connectionId}`) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Persist the ACTIVE schema for a connection (best-effort; never throws). */
+  public static setActiveSchema(connectionId: string, schemaName: string | null): void {
+    try {
+      if (schemaName) {
+        localStorage.setItem(`${LOCAL_ACTIVE_SCHEMA_PREFIX}${connectionId}`, schemaName);
+      } else {
+        localStorage.removeItem(`${LOCAL_ACTIVE_SCHEMA_PREFIX}${connectionId}`);
+      }
+    } catch {
+      // localStorage unavailable (private mode, quota) — persistence is a
+      // convenience, not a contract; silently degrade to session-only state.
+    }
   }
 
   public static saveSchema(connectionId: string): void {

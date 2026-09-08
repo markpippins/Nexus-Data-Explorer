@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Database,
   Table as TableIcon,
@@ -55,6 +55,10 @@ interface TreeViewProps {
   onSetActiveSchema?: (schemaName: string) => void;
   /** Open the schema-compare modal for two schemas. */
   onCompareSchemas?: (left: string, right?: string) => void;
+  /** Sidebar width in px (controlled — App persists it across sessions). */
+  width?: number;
+  /** Live width updates while the user drags the resize handle. */
+  onResize?: (width: number) => void;
 }
 
 export const TreeView: React.FC<TreeViewProps> = ({
@@ -74,6 +78,8 @@ export const TreeView: React.FC<TreeViewProps> = ({
   activeSchema,
   onSetActiveSchema,
   onCompareSchemas,
+  width,
+  onResize,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'tables' | 'views'>('all');
@@ -209,8 +215,49 @@ export const TreeView: React.FC<TreeViewProps> = ({
 
   const isFilteringActive = searchTerm.trim().length > 0 || filterType !== 'all';
 
+  // Drag-resize: mousedown arms the handle, mousemove over the document sets
+  // the live width (via onResize), mouseup disarms. Listeners attach while
+  // dragging only, so idle cost is zero.
+  const [resizing, setResizing] = useState(false);
+  const resizeStartRef = useRef({ x: 0, startWidth: 0 });
+
+  const beginResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeStartRef.current = { x: e.clientX, startWidth: width ?? 256 };
+    setResizing(true);
+  };
+
+  useEffect(() => {
+    if (!resizing) return;
+    const MIN_W = 200;
+    const MAX_W = 560;
+    const onMove = (e: MouseEvent) => {
+      const { x, startWidth } = resizeStartRef.current;
+      const next = Math.min(MAX_W, Math.max(MIN_W, startWidth + (e.clientX - x)));
+      onResize?.(next);
+    };
+    const onUp = () => setResizing(false);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [resizing, onResize]);
+
   return (
-    <aside className="w-64 bg-[#181A1F] border-r border-[#2D3139] flex flex-col h-full select-none text-[#E2E8F0] font-sans shrink-0">
+    <aside
+      style={{ width: `${width ?? 256}px` }}
+      className={`bg-[#181A1F] border-r border-[#2D3139] flex flex-col h-full select-none text-[#E2E8F0] font-sans shrink-0 relative ${resizing ? 'cursor-col-resize' : ''}`}
+    >
+      {/* Drag handle — 6px hit strip on the right edge, visible on hover */}
+      <div
+        onMouseDown={beginResize}
+        title="Drag to resize"
+        className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize transition-colors ${
+          resizing ? 'bg-blue-500/60' : 'hover:bg-blue-500/40'
+        }`}
+      />
       {/* Search & Actions Header */}
       <div className="p-3 border-b border-[#2D3139] space-y-2">
         <div className="flex items-center justify-between">
