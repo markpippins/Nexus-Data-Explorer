@@ -26,6 +26,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   const [password, setPassword] = useState(editing?.password || '');
   const [ssl, setSsl] = useState(editing?.ssl ?? false);
   const [color, setColor] = useState(editing?.color || '#3b82f6');
+  const [defaultSchema, setDefaultSchema] = useState(editing?.defaultSchema || 'public');
   const [testing, setTesting] = useState(false);
   const [testSuccess, setTestSuccess] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -72,6 +73,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
       password,
       ssl,
       color,
+      defaultSchema: defaultSchema.trim() || undefined,
       status: 'disconnected',
       createdAt: editing?.createdAt || new Date().toISOString(),
     };
@@ -105,7 +107,6 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
               className="w-full bg-[#0F1115] border border-[#2D3139] rounded px-3 py-1.5 text-[#E2E8F0] focus:outline-none focus:border-blue-500 placeholder:text-[#64748B]"
             />
           </div>
-
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2 space-y-1">
               <label className="text-[11px] text-[#94A3B8] font-bold">Host / IP</label>
@@ -129,16 +130,33 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[11px] text-[#94A3B8] font-bold">Database Name</label>
-            <input
-              type="text"
-              required
-              value={database}
-              onChange={(e) => setDatabase(e.target.value)}
-              className="w-full bg-[#0F1115] border border-[#2D3139] rounded px-3 py-1.5 text-[#E2E8F0] focus:outline-none focus:border-blue-500"
-            />
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2 space-y-1">
+              <label className="text-[11px] text-[#94A3B8] font-bold">Database Name</label>
+              <input
+                type="text"
+                required
+                value={database}
+                onChange={(e) => setDatabase(e.target.value)}
+                className="w-full bg-[#0F1115] border border-[#2D3139] rounded px-3 py-1.5 text-[#E2E8F0] focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] text-[#94A3B8] font-bold">Default Schema</label>
+              <input
+                type="text"
+                placeholder="public"
+                value={defaultSchema}
+                onChange={(e) => setDefaultSchema(e.target.value)}
+                className="w-full bg-[#0F1115] border border-[#2D3139] rounded px-3 py-1.5 text-[#E2E8F0] focus:outline-none focus:border-blue-500 placeholder:text-[#64748B]"
+              />
+            </div>
           </div>
+          <p className="text-[10px] text-[#64748B] -mt-2 leading-relaxed">
+            The default schema is only the starting point for new/unqualified queries —
+            every schema on the database stays browsable in the tree, and you can set
+            any schema active from there.
+          </p>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">

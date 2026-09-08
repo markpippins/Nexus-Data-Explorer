@@ -20,7 +20,9 @@ import {
   Boxes,
   X,
   Layers,
-  Filter
+  Filter,
+  Target,
+  GitCompare
 } from 'lucide-react';
 import {
   DBConnection,
@@ -47,6 +49,12 @@ interface TreeViewProps {
   onRefreshSchema: () => void;
   onOpenEavStudio?: (schemaName?: string) => void;
   onOpenQueryBuilder?: (schemaName?: string, tableName?: string) => void;
+  /** Currently active (unqualified-name resolution) schema. */
+  activeSchema?: string | null;
+  /** Switch the active schema. */
+  onSetActiveSchema?: (schemaName: string) => void;
+  /** Open the schema-compare modal for two schemas. */
+  onCompareSchemas?: (left: string, right?: string) => void;
 }
 
 export const TreeView: React.FC<TreeViewProps> = ({
@@ -63,6 +71,9 @@ export const TreeView: React.FC<TreeViewProps> = ({
   onRefreshSchema,
   onOpenEavStudio,
   onOpenQueryBuilder,
+  activeSchema,
+  onSetActiveSchema,
+  onCompareSchemas,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'tables' | 'views'>('all');
@@ -309,6 +320,14 @@ export const TreeView: React.FC<TreeViewProps> = ({
             <span className="font-mono text-[11px] font-medium text-[#E2E8F0] truncate">
               {activeConnection.database}
             </span>
+            {activeSchema && (
+              <span
+                className="text-[10px] font-mono px-1.5 py-0.5 bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded truncate"
+                title="Active schema — unqualified queries resolve here"
+              >
+                {activeSchema}
+              </span>
+            )}
           </div>
           <span className="text-[10px] font-mono px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
             PostgreSQL
@@ -341,6 +360,8 @@ export const TreeView: React.FC<TreeViewProps> = ({
           filteredSchemas.map((schema) => {
             const schemaId = `schema-${schema.name}`;
             const isSchemaExpanded = isFilteringActive ? true : (expandedNodes[schemaId] ?? true);
+            const isActiveSchema = !!activeSchema && activeSchema === schema.name;
+            const isDefaultSchema = !!activeConnection?.defaultSchema && activeConnection.defaultSchema === schema.name;
 
             return (
               <div key={schema.name} className="text-xs">
@@ -348,7 +369,9 @@ export const TreeView: React.FC<TreeViewProps> = ({
                 <div
                   onClick={(e) => toggleNode(schemaId, e)}
                   onContextMenu={(e) => handleRightClick(e, 'schema', schema.name)}
-                  className="flex items-center space-x-1.5 px-2 py-1 rounded hover:bg-[#2D3139] cursor-pointer text-[#E2E8F0] font-medium group"
+                  className={`flex items-center space-x-1.5 px-2 py-1 rounded cursor-pointer text-[#E2E8F0] font-medium group ${
+                    isActiveSchema ? 'bg-blue-950/50 border border-blue-600/40' : 'hover:bg-[#2D3139]'
+                  }`}
                 >
                   {isSchemaExpanded ? (
                     <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8] shrink-0" />
@@ -356,11 +379,27 @@ export const TreeView: React.FC<TreeViewProps> = ({
                     <ChevronRight className="w-3.5 h-3.5 text-[#94A3B8] shrink-0" />
                   )}
                   {isSchemaExpanded ? (
-                    <FolderOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <FolderOpen className={`w-3.5 h-3.5 shrink-0 ${isActiveSchema ? 'text-blue-400' : 'text-amber-400'}`} />
                   ) : (
-                    <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <Folder className={`w-3.5 h-3.5 shrink-0 ${isActiveSchema ? 'text-blue-400' : 'text-amber-400'}`} />
                   )}
                   <span className="truncate">{renderHighlightedText(schema.name, searchTerm)}</span>
+                  {isActiveSchema && (
+                    <span
+                      title="Active schema — unqualified queries resolve here"
+                      className="px-1.5 py-0.2 text-[9px] bg-blue-600/30 text-blue-300 border border-blue-500/50 rounded font-semibold"
+                    >
+                      ACTIVE
+                    </span>
+                  )}
+                  {isDefaultSchema && !isActiveSchema && (
+                    <span
+                      title="Connection default schema (set in the connection dialog)"
+                      className="px-1.5 py-0.2 text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded font-mono"
+                    >
+                      default
+                    </span>
+                  )}
                   {(schema.category === 'shrapnel' || schema.name === 'shrapnel') && (
                     <span
                       onClick={(e) => {
@@ -372,6 +411,30 @@ export const TreeView: React.FC<TreeViewProps> = ({
                     >
                       shrapnel
                     </span>
+                  )}
+                  {onSetActiveSchema && !isActiveSchema && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSetActiveSchema(schema.name);
+                      }}
+                      title={`Set ${schema.name} as the active schema`}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-blue-900/60 text-blue-400 rounded transition-opacity cursor-pointer shrink-0"
+                    >
+                      <Target className="w-3 h-3" />
+                    </button>
+                  )}
+                  {onCompareSchemas && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCompareSchemas(schema.name);
+                      }}
+                      title={`Compare ${schema.name} with another schema`}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-purple-900/60 text-purple-400 rounded transition-opacity cursor-pointer shrink-0"
+                    >
+                      <GitCompare className="w-3 h-3" />
+                    </button>
                   )}
                   <span className="text-[10px] text-[#64748B] font-mono ml-auto">
                     ({schema.tables.length})
